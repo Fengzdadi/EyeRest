@@ -56,9 +56,18 @@ public struct BreakTimer {
         public init() {}
     }
 
+    /// Something that happened, for the activity log and the end-of-break sound.
     public enum Event: Equatable, Sendable {
-        /// A break ran its full length (not skipped, and not ended by sleep).
-        case breakFinished
+        case breakStarted(long: Bool)
+        /// The break ran its full length.
+        case breakFinished(long: Bool)
+        case breakSkipped(long: Bool)
+        /// From the heads-up or the break screen.
+        case breakPostponed
+        /// The Mac slept through the break.
+        case breakInterrupted(long: Bool)
+        case paused(until: Date?)
+        case resumed
     }
 
     public var config: Config
@@ -84,6 +93,8 @@ public struct BreakTimer {
         return long ? config.longBreakSeconds : config.breakSeconds
     }
 
+    /// Events since the last `takeEvents()`.
+    private var events: [Event] = []
     /// Total seconds ticked so far: the timer's own monotonic clock.
     private var clock: TimeInterval = 0
     /// When the current break became due, while it waits for a pause in typing.
@@ -96,14 +107,18 @@ public struct BreakTimer {
 
     // MARK: Ticking
 
+    /// Returns the events that happened since the last call, oldest first.
+    public mutating func takeEvents() -> [Event] {
+        defer { events = [] }
+        return events
+    }
+
     /// Advances the timer by `elapsed` seconds of monotonic time. `now` is the
     /// wall-clock time, used only to end a "pause until" at the right moment.
-    @discardableResult
-    public mutating func tick(elapsed: TimeInterval, now: Date, probe: ActivityProbe) -> Event? {
+    public mutating func tick(elapsed: TimeInterval, now: Date, probe: ActivityProbe) {
         // A monotonic source never goes backwards; guard anyway.
         let elapsed = max(0, elapsed)
         clock += elapsed
-        var event: Event?
 
         switch state {
         case .paused(let until):
@@ -114,7 +129,9 @@ public struct BreakTimer {
             if remaining <= 0 {
                 // A gap longer than the whole break means the Mac slept through
                 // it, so end the break quietly.
-                if elapsed <= breakLength { event = .breakFinished }
+                events.append(elapsed <= breakLength
+                    ? .breakFinished(long: isLongBreak)
+                    : .breakInterrupted(long: isLongBreak))
                 countBreak()
                 endBreak(nextIn: config.workSeconds)
             }
@@ -148,7 +165,6 @@ public struct BreakTimer {
         }
 
         updateHeadsUp(probe: probe)
-        return event
     }
 
     // MARK: Actions
@@ -160,25 +176,29 @@ public struct BreakTimer {
     /// Skipping still counts toward the next long break, so skipping short
     /// breaks doesn't put a long one off.
     public mutating func skipBreak() {
-        if state == .onBreak { countBreak() }
+        if state == .onBreak {
+            events.append(.breakSkipped(long: isLongBreak))
+            countBreak()
+        }
         endBreak(nextIn: config.workSeconds)
     }
 
     public mutating func postponeBreak() {
+        events.append(.breakPostponed)
         endBreak(nextIn: config.postponeSeconds)
     }
 
     public mutating func pause(until: Date?) {
+        events.append(.paused(until: until))
         state = .paused(until: until)
         dueSince = nil
+        isLongBreak = false
         showsHeadsUp = false
     }
 
     public mutating func resume() {
-        state = .working
-        remaining = config.workSeconds
-        dueSince = nil
-        showsHeadsUp = false
+        events.append(.resumed)
+        startWork()
     }
 
     /// Starts a fresh work interval, e.g. after the interval setting changes.
@@ -186,7 +206,7 @@ public struct BreakTimer {
     public mutating func restartWorkTimer() {
         switch state {
         case .onBreak, .paused: return
-        default: resume()
+        default: startWork()
         }
     }
 
@@ -226,9 +246,17 @@ public struct BreakTimer {
         }
     }
 
+    private mutating func startWork() {
+        state = .working
+        remaining = config.workSeconds
+        dueSince = nil
+        showsHeadsUp = false
+    }
+
     private mutating func startBreak() {
         dueSince = nil
         isLongBreak = nextBreakIsLong
+        events.append(.breakStarted(long: isLongBreak))
         state = .onBreak
         remaining = breakLength
         showsHeadsUp = false

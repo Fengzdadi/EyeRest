@@ -28,7 +28,7 @@ struct WorkAndBreak {
         rig.advance(60)
         #expect(rig.advance(19).isEmpty)
         #expect(rig.state == .onBreak)
-        #expect(rig.tick() == .breakFinished)
+        #expect(rig.tick() == [.breakFinished(long: false)])
         #expect(rig.state == .working)
         #expect(rig.remaining == 60)
     }
@@ -322,7 +322,7 @@ struct LongBreaks {
         #expect(rig.timer.isLongBreak)
         #expect(rig.remaining == 300)
         #expect(rig.advance(299).isEmpty)
-        #expect(rig.tick() == .breakFinished)
+        #expect(rig.tick() == [.breakFinished(long: true)])
         #expect(rig.timer.breaksSinceLong == 0)
         #expect(!rig.timer.nextBreakIsLong)
     }
@@ -402,6 +402,47 @@ struct LongBreaks {
 }
 
 @MainActor
+struct Events {
+    @Test func aFullBreakStartsAndFinishes() {
+        var rig = Rig()
+        #expect(rig.advance(59).isEmpty)
+        #expect(rig.tick() == [.breakStarted(long: false)])
+        #expect(rig.advance(20) == [.breakFinished(long: false)])
+    }
+
+    @Test func longBreaksSayTheyAreLong() {
+        var rig = Rig()
+        rig.takeShortBreak()
+        rig.takeShortBreak()
+        #expect(rig.advance(60) == [.breakStarted(long: true)])
+        rig.timer.skipBreak()
+        #expect(rig.timer.takeEvents() == [.breakSkipped(long: true)])
+    }
+
+    @Test func postponingFromTheHeadsUpIsLoggedWithoutAStart() {
+        var rig = Rig()
+        rig.advance(55)
+        rig.timer.postponeBreak()
+        #expect(rig.timer.takeEvents() == [.breakPostponed])
+    }
+
+    @Test func aPauseThatRunsOutResumes() {
+        var rig = Rig()
+        let until = rig.now.addingTimeInterval(10)
+        rig.timer.pause(until: until)
+        #expect(rig.timer.takeEvents() == [.paused(until: until)])
+        #expect(rig.advance(10) == [.resumed])
+    }
+
+    @Test func changingTheIntervalIsNotLogged() {
+        var rig = Rig()
+        rig.timer.config.workSeconds = 120
+        rig.timer.restartWorkTimer()
+        #expect(rig.timer.takeEvents().isEmpty)
+    }
+}
+
+@MainActor
 struct ClockEdges {
     @Test func aClockGoingBackwardsIsIgnored() {
         var rig = Rig()
@@ -414,7 +455,7 @@ struct ClockEdges {
     @Test func sleepingThroughABreakEndsItQuietly() {
         var rig = Rig()
         rig.advance(60)
-        #expect(rig.tick(3600) == nil)
+        #expect(rig.tick(3600) == [.breakInterrupted(long: false)])
         #expect(rig.state == .working)
         #expect(rig.remaining == 60)
     }
@@ -422,7 +463,7 @@ struct ClockEdges {
     @Test func aSlowTickWithinTheBreakStillFinishesIt() {
         var rig = Rig()
         rig.advance(60)
-        #expect(rig.tick(20) == .breakFinished)
+        #expect(rig.tick(20) == [.breakFinished(long: false)])
     }
 
     @Test func fractionalTicksAddUp() {
@@ -484,11 +525,12 @@ struct Rig {
     var state: BreakTimer.State { timer.state }
     var remaining: TimeInterval { timer.remaining }
 
-    /// One tick, `elapsed` seconds after the last.
+    /// One tick, `elapsed` seconds after the last. Returns the events it caused.
     @discardableResult
-    mutating func tick(_ elapsed: TimeInterval = 1) -> BreakTimer.Event? {
+    mutating func tick(_ elapsed: TimeInterval = 1) -> [BreakTimer.Event] {
         now += elapsed
-        return timer.tick(elapsed: elapsed, now: now, probe: probe)
+        timer.tick(elapsed: elapsed, now: now, probe: probe)
+        return timer.takeEvents()
     }
 
     /// Works through one interval and takes the (short) break that follows.
@@ -501,6 +543,6 @@ struct Rig {
     /// One tick per second for `seconds` seconds. Returns the events seen.
     @discardableResult
     mutating func advance(_ seconds: Int) -> [BreakTimer.Event] {
-        (0..<seconds).compactMap { _ in tick() }
+        (0..<seconds).flatMap { _ in tick() }
     }
 }

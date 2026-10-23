@@ -11,4 +11,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         scheduler.onUpdate = { [weak self] in self?.statusMenu.refresh() }
         scheduler.start()
     }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        scheduler.shutdown()
+    }
 }

@@ -25,6 +25,7 @@ final class BreakScheduler: ObservableObject {
     private var core = BreakTimer(config: .current)
     private let overlay = BreakOverlay()
     private let headsUp = HeadsUp()
+    private let activity = ActivityLogger()
     private var ticker: Timer?
     /// A monotonic clock (unlike Date, unaffected by clock changes) that keeps
     /// counting while the Mac sleeps, so a sleep shows up as a long gap.
@@ -94,16 +95,28 @@ final class BreakScheduler: ObservableObject {
         let elapsed = (now - lastTick).seconds
         lastTick = now
 
+        let wallNow = Date()
         core.config = .current
-        if core.tick(elapsed: elapsed, now: Date(), probe: probe) == .breakFinished, Settings.playSound {
-            NSSound(named: "Glass")?.play()
-        }
+        core.tick(elapsed: elapsed, now: wallNow, probe: probe)
+        activity.recordPresence(now: wallNow, elapsed: elapsed, timer: core, probe: probe)
         sync()
+    }
+
+    /// Records the end of the current stretch at the screen, as the app quits.
+    func shutdown() {
+        activity.shutdown()
     }
 
     /// Copies the timer's state to the published properties and shows or hides
     /// the break screen and the heads-up to match.
     private func sync() {
+        let now = Date()
+        let events = core.takeEvents()
+        activity.record(events, at: now)
+        if Settings.playSound, events.contains(where: { if case .breakFinished = $0 { true } else { false } }) {
+            NSSound(named: "Glass")?.play()
+        }
+
         let previous = state
         if core.state != previous {
             log.notice("state: \(String(describing: self.core.state), privacy: .public)")
@@ -124,6 +137,7 @@ final class BreakScheduler: ObservableObject {
         } else {
             headsUp.hide()
         }
+        activity.updateStatus(core, now: now)
         onUpdate?()
     }
 }

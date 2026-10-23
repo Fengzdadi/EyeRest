@@ -34,6 +34,8 @@ something 20 feet (about 6 m) away for 20 seconds.
 - English and Simplified Chinese (界面支持简体中文). Pick one under
   **Language** in the menu, or follow the system.
 - Launch at login.
+- **An MCP server for AI agents.** Agents such as Claude can read your break
+  status and screen time (read-only). See [For AI agents](#for-ai-agents-mcp).
 - No camera, microphone, accessibility or network access needed. It only reads
   whether devices are busy, never their contents. Calendar access is asked for
   only if you turn on calendar meetings.
@@ -52,6 +54,42 @@ make install
 
 This builds `EyeRest.app`, signs it ad hoc for your own Mac, copies it to
 `/Applications` and starts it. Turn on **Launch at Login** from the menu.
+
+## For AI agents (MCP)
+
+The app includes `eyerest-mcp`, a read-only [MCP](https://modelcontextprotocol.io)
+server, so an agent can see whether you're due a break and how your day has
+gone. It reads what the app records locally; agents can't change your settings
+or breaks.
+
+Add it to Claude Code:
+
+```bash
+claude mcp add --scope user eyerest -- /Applications/EyeRest.app/Contents/MacOS/eyerest-mcp
+```
+
+Or to Claude Desktop, in `~/Library/Application Support/Claude/claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "eyerest": { "command": "/Applications/EyeRest.app/Contents/MacOS/eyerest-mcp" }
+  }
+}
+```
+
+| Tool | What it returns |
+|---|---|
+| `get_status` | Working, on a break, waiting, away or paused, and how long until the next break (and whether it's a long one) |
+| `get_today` | Today's time at the screen, longest stretch without a break, and breaks finished, skipped and postponed |
+| `get_history` | The same, one entry per day, for the last `days` days (default 7, at most 90) |
+
+**What's recorded.** Time at the screen counts while there's recent keyboard
+or mouse input or a video playing, not which apps you use. Break events and
+time at the screen go to `~/Library/Application Support/EyeRest/activity.jsonl`
+(kept for 90 days), and the current state to `status.json` next to it.
+Nothing leaves your Mac unless an agent reads it: what an agent reads becomes
+part of its conversation with its model.
 
 ## Development
 
@@ -119,6 +157,9 @@ calls. It reads the Mac's state through an `ActivityProbe`, so the tests in
 | `HeadsUp.swift` | The countdown pill before a break; a panel that never becomes key |
 | `BreakOverlay.swift` | Non-activating full-screen panels, so focus goes back to your app after the break |
 | `StatusMenu.swift` | Menu bar icon, countdown and menu |
+| `ActivityLogger.swift` | Writes the activity log and status file the MCP server reads |
+| `EyeRestCore/ActivityLog.swift`, `DaySummary.swift`, `ActivityStore.swift` | Activity records, time at the screen, daily summaries, and the files they live in |
+| `EyeRestMCP/MCPServer.swift` | The MCP server: JSON-RPC over stdio, three read-only tools |
 | `PanelSupport.swift` | Screen-under-mouse lookup and fade animations shared by the panels |
 | `Resources/*.lproj` | Translations; the keys are the English text in the code |
 | `scripts/make-icon.swift` | Draws the app icon: `swift scripts/make-icon.swift` |
