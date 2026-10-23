@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleExecutable</key>
+	<string>EyeRest</string>
+	<key>CFBundleIdentifier</key>
+	<string>io.github.fengzdadi.EyeRest</string>
+	<key>CFBundleName</key>
+	<string>EyeRest</string>
+	<key>CFBundleDisplayName</key>
+	<string>EyeRest</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.2.0</string>
+	<key>CFBundleVersion</key>
+	<string>2</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>EyeRest checks whether you're in a meeting right now so it doesn't start a break in the middle of it. Nothing leaves your Mac.</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+</dict>
+</plist>
