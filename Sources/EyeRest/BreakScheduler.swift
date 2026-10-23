@@ -48,6 +48,9 @@ final class BreakScheduler: ObservableObject {
         let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.tick() }
         }
+        // Ticks measure real elapsed time, so letting macOS shift them a little to
+        // batch wakeups with other work costs no accuracy.
+        timer.tolerance = 0.3
         RunLoop.main.add(timer, forMode: .common)  // keep ticking while the menu is open
         self.timer = timer
         onUpdate?()

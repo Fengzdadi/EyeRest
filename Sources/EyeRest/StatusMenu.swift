@@ -8,6 +8,10 @@ final class StatusMenu: NSObject, NSMenuDelegate {
     private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let menu = NSMenu()
     private let statusLine = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+    private var isMenuOpen = false
+    /// What the menu bar button shows now, to skip redraws when nothing changed.
+    private var shownSymbol = ""
+    private var shownTitle = ""
 
     /// Launch at login only works when running from a real .app bundle.
     private var isBundled: Bool { Bundle.main.bundleIdentifier != nil }
@@ -23,8 +27,11 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         refresh()
     }
 
+    /// Called every second. The countdown usually shows whole minutes, so most
+    /// calls change nothing; updating the button anyway costs a menu bar redraw
+    /// (on macOS 26, a round trip to Control Center, which draws status items).
     func refresh() {
-        statusLine.title = statusText()
+        if isMenuOpen { statusLine.title = statusText() }
 
         guard let button = item.button else { return }
         let symbol: String
@@ -37,11 +44,20 @@ final class StatusMenu: NSObject, NSMenuDelegate {
             symbol = "eye"
             if Settings.showTimer { title = " " + shortTime(scheduler.remaining) }
         }
-        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: "EyeRest")
-        button.title = title
+        if symbol != shownSymbol {
+            button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: "EyeRest")
+            shownSymbol = symbol
+        }
+        if title != shownTitle {
+            button.title = title
+            shownTitle = title
+        }
     }
 
     // MARK: Menu
+
+    func menuWillOpen(_ menu: NSMenu) { isMenuOpen = true }
+    func menuDidClose(_ menu: NSMenu) { isMenuOpen = false }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
