@@ -1,6 +1,6 @@
 APP := build/EyeRest.app
 
-.PHONY: run demo app install clean
+.PHONY: run demo test app install clean
 
 # Run from source (Launch at Login is unavailable outside the .app).
 run:
@@ -9,6 +9,10 @@ run:
 # Try it out: a break every 15 seconds, lasting 5 seconds.
 demo:
 	swift run EyeRest -workSeconds 15 -breakSeconds 5
+
+# Run the unit tests.
+test:
+	swift test
 
 # Build build/EyeRest.app.
 app:

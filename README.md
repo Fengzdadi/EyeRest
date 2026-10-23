@@ -1,5 +1,7 @@
 # EyeRest
 
+[![CI](https://github.com/Fengzdadi/EyeRest/actions/workflows/ci.yml/badge.svg)](https://github.com/Fengzdadi/EyeRest/actions/workflows/ci.yml)
+
 A tiny macOS menu bar app for the **20-20-20 rule**: every 20 minutes, look at
 something 20 feet (about 6 m) away for 20 seconds.
 
@@ -51,6 +53,7 @@ This builds `EyeRest.app`, signs it ad hoc for your own Mac, copies it to
 ```bash
 make run    # run from source
 make demo   # a break every 15 s, lasting 5 s
+make test   # unit tests for the break timer
 make app    # build build/EyeRest.app without installing
 ```
 
@@ -94,9 +97,15 @@ To see what EyeRest is doing:
 
 ## How it works
 
+The break logic lives in a small library, `EyeRestCore`, with no UI or system
+calls. It reads the Mac's state through an `ActivityProbe`, so the tests in
+`Tests/EyeRestCoreTests` drive it with a fake probe and made-up elapsed times.
+
 | File | Role |
 |---|---|
-| `BreakScheduler.swift` | The timer and state machine: working, away, waiting while busy, waiting for a typing pause, on a break, paused |
+| `EyeRestCore/BreakTimer.swift` | The state machine: working, away, waiting while busy, waiting for a typing pause, on a break, paused |
+| `BreakScheduler.swift` | Ticks the timer once a second and mirrors it into the break screen, heads-up and menu |
+| `LiveProbe.swift` | The real `ActivityProbe`: idle time, screen lock, and the "Hold Breaks During" checks |
 | `Activity.swift` | Idle time (`CGEventSource`), camera use (CoreMediaIO), microphone use per process (Core Audio), display-sleep assertions (IOKit), slideshow windows (`CGWindowList`) |
 | `MeetingCalendar.swift` | Current calendar meeting (EventKit) |
 | `HeadsUp.swift` | The countdown pill before a break; a panel that never becomes key |

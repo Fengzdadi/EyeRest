@@ -1,4 +1,5 @@
 import AppKit
+import EyeRestCore
 import ServiceManagement
 
 /// The menu bar icon, countdown and menu.

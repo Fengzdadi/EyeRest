@@ -1,4 +1,5 @@
 import AppKit
+import EyeRestCore
 import SwiftUI
 
 /// A small pill at the top of the screen in the seconds before a break. It

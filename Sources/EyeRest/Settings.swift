@@ -1,3 +1,4 @@
+import EyeRestCore
 import Foundation
 
 /// User preferences, stored in UserDefaults.
@@ -89,5 +90,21 @@ enum Settings {
     static var showTimer: Bool {
         get { defaults.bool(forKey: "showTimer") }
         set { defaults.set(newValue, forKey: "showTimer") }
+    }
+}
+
+extension BreakTimer.Config {
+    /// The timer's durations from the current settings.
+    static var current: Self {
+        var config = Self()
+        config.workSeconds = TimeInterval(Settings.workSeconds)
+        config.breakSeconds = TimeInterval(Settings.breakSeconds)
+        config.postponeSeconds = TimeInterval(Settings.postponeSeconds)
+        config.idleResetSeconds = TimeInterval(Settings.idleResetSeconds)
+        config.graceSeconds = TimeInterval(Settings.graceSeconds)
+        config.headsUpSeconds = TimeInterval(Settings.headsUpSeconds)
+        config.typingPauseSeconds = Settings.typingPauseSeconds
+        config.maxTypingWaitSeconds = TimeInterval(Settings.maxTypingWaitSeconds)
+        return config
     }
 }
