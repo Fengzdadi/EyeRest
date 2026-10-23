@@ -29,7 +29,7 @@ final class MeetingCalendar {
             lastRefresh = Date()
             let now = Date()
             let predicate = store.predicateForEvents(withStart: now, end: now.addingTimeInterval(1), calendars: nil)
-            current = store.events(matching: predicate).first(where: Self.isMeeting).map { $0.title ?? "Untitled" }
+            current = store.events(matching: predicate).first(where: Self.isMeeting).map { $0.title ?? String(localized: "Untitled") }
         }
         return current
     }

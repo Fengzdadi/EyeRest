@@ -102,7 +102,10 @@ private struct HeadsUpView: View {
     }
 
     private var message: String {
-        if scheduler.state == .waitingForTyping { return "Break when you pause typing" }
-        return "Eye break in \(Int(scheduler.remaining.rounded(.up)))s"
+        if scheduler.state == .waitingForTyping { return String(localized: "Break when you pause typing") }
+        let seconds = Int(scheduler.remaining.rounded(.up))
+        return scheduler.nextBreakIsLong
+            ? String(localized: "Long break in \(seconds)s")
+            : String(localized: "Eye break in \(seconds)s")
     }
 }

@@ -106,8 +106,9 @@ private struct BreakView: View {
     let onPostpone: () -> Void
 
     var body: some View {
-        let total = max(1, Double(Settings.breakSeconds))
+        let total = max(1, scheduler.breakLength)
         let left = max(0, scheduler.remaining)
+        let seconds = Int(left.rounded(.up))
 
         ZStack {
             Color.black.opacity(0.35)
@@ -121,16 +122,17 @@ private struct BreakView: View {
                         .stroke(.white, style: StrokeStyle(lineWidth: 6, lineCap: .round))
                         .rotationEffect(.degrees(-90))
                         .animation(.linear(duration: 1), value: left)
-                    Text("\(Int(left.rounded(.up)))")
-                        .font(.system(size: 64, weight: .light, design: .rounded))
+                    // Long breaks count down in minutes and seconds.
+                    Text(verbatim: total >= 60 ? String(format: "%d:%02d", seconds / 60, seconds % 60) : "\(seconds)")
+                        .font(.system(size: total >= 60 ? 52 : 64, weight: .light, design: .rounded))
                         .monospacedDigit()
                 }
                 .frame(width: 180, height: 180)
 
                 VStack(spacing: 10) {
-                    Text("Look at something 20 feet away")
+                    (scheduler.isLongBreak ? Text("Time to stand up") : Text("Look at something 20 feet away"))
                         .font(.system(size: 30, weight: .semibold))
-                    Text("About 6 metres. Let your eyes relax.")
+                    (scheduler.isLongBreak ? Text("Stretch, walk around and rest your eyes.") : Text("About 6 metres. Let your eyes relax."))
                         .font(.title3)
                         .foregroundStyle(.white.opacity(0.7))
                 }

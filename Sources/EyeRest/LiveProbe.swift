@@ -28,11 +28,11 @@ final class LiveProbe: ActivityProbe {
             return reason
         }
         if Settings.holdDuringSlideshows, let app = Activity.slideshowApp() {
-            return "\(app) slideshow"
+            return String(localized: "\(app) slideshow")
         }
         if Settings.holdDuringMeetings, let title = calendar.currentMeeting() {
-            let short = title.count > 30 ? title.prefix(29) + "…" : Substring(title)
-            return "meeting: \(short)"
+            let short = title.count > 30 ? String(title.prefix(29)) + "…" : title
+            return String(localized: "meeting: \(short)")
         }
         return nil
     }

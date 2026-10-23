@@ -1,0 +1,67 @@
+/* Simplified Chinese. Keys are the English text in the code. */
+
+/* Menu: status line */
+"Next break in %@" = "%@ 后休息";
+"Next long break in %@" = "%@ 后长休息";
+"Break due, waiting (%@)" = "该休息了，正在等待（%@）";
+"Away, timer restarts when you're back" = "已离开，回来后重新计时";
+"Break when you pause typing" = "停下打字后开始休息";
+"On a break" = "休息中";
+"On a long break" = "长休息中";
+"Paused" = "已暂停";
+"Paused until %@" = "暂停至 %@";
+
+/* Why a break is waiting */
+"camera in use" = "摄像头使用中";
+"microphone in use" = "麦克风使用中";
+"%@ slideshow" = "%@ 正在放映";
+"meeting: %@" = "会议：%@";
+"Untitled" = "无标题";
+
+/* Menu: actions */
+"Take a Break Now" = "立即休息";
+"Resume" = "继续";
+"Pause" = "暂停";
+"For 30 Minutes" = "30 分钟";
+"For 1 Hour" = "1 小时";
+"Until I Resume" = "直到手动继续";
+
+/* Menu: settings */
+"Break Every" = "休息间隔";
+"%lld minutes" = "%lld 分钟";
+"Break Length" = "休息时长";
+"%lld seconds" = "%lld 秒";
+"Long Breaks" = "长休息";
+"Off" = "关闭";
+"Every %lld Minutes" = "每 %lld 分钟";
+"Lasting %lld Minutes" = "持续 %lld 分钟";
+"Hold Breaks During" = "以下情况暂缓休息";
+"Calls (Camera or Mic in Use)" = "通话（摄像头或麦克风使用中）";
+"Keynote and PowerPoint Slideshows" = "Keynote 和 PowerPoint 放映";
+"Calendar Meetings" = "日历会议";
+"Show Timer in Menu Bar" = "在菜单栏显示倒计时";
+"Sound When a Break Ends" = "休息结束时播放提示音";
+"Language" = "语言";
+"System Default" = "跟随系统";
+"Launch at Login" = "登录时启动";
+"Quit EyeRest" = "退出 EyeRest";
+"Build the .app with `make app` to enable this." = "需要先用 `make app` 构建 .app 才能使用。";
+
+/* Calendar permission */
+"EyeRest can't read your calendar" = "EyeRest 无法读取你的日历";
+"Allow access in System Settings > Privacy & Security > Calendars, then turn this on again." = "请在“系统设置 > 隐私与安全性 > 日历”中允许访问，然后重新打开此选项。";
+
+/* Heads-up before a break */
+"Eye break in %llds" = "%lld 秒后休息";
+"Long break in %llds" = "%lld 秒后长休息";
+"Start Now" = "现在开始";
+"+%lld min" = "+%lld 分钟";
+
+/* Break screen */
+"Look at something 20 feet away" = "看看 6 米外的地方";
+"About 6 metres. Let your eyes relax." = "大约 20 英尺，让眼睛放松一下。";
+"Time to stand up" = "起来活动一下";
+"Stretch, walk around and rest your eyes." = "伸伸懒腰，走一走，也让眼睛休息一下。";
+"Postpone %lld min" = "推迟 %lld 分钟";
+"Skip" = "跳过";
+"Press Esc to skip" = "按 Esc 跳过";

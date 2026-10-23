@@ -13,6 +13,10 @@ final class BreakScheduler: ObservableObject {
     @Published private(set) var state: State = .working
     /// Seconds until the next break, or until the current break ends.
     @Published private(set) var remaining: TimeInterval
+    @Published private(set) var isLongBreak = false
+    @Published private(set) var nextBreakIsLong = false
+    /// Length of the current break, or of the next one.
+    @Published private(set) var breakLength: TimeInterval = 0
 
     var onUpdate: (() -> Void)?
 
@@ -91,7 +95,7 @@ final class BreakScheduler: ObservableObject {
         lastTick = now
 
         core.config = .current
-        if core.tick(elapsed: elapsed, now: Date(), probe: probe) == .breakFinished {
+        if core.tick(elapsed: elapsed, now: Date(), probe: probe) == .breakFinished, Settings.playSound {
             NSSound(named: "Glass")?.play()
         }
         sync()
@@ -106,6 +110,9 @@ final class BreakScheduler: ObservableObject {
         }
         state = core.state
         remaining = core.remaining
+        isLongBreak = core.isLongBreak
+        nextBreakIsLong = core.nextBreakIsLong
+        breakLength = core.breakLength
 
         if state == .onBreak && previous != .onBreak {
             overlay.show(scheduler: self)

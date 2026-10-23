@@ -28,8 +28,8 @@ enum Activity {
 
     /// A short reason when a call looks to be in progress, otherwise nil.
     static func callInProgress() -> String? {
-        if isCameraInUse() { return "camera in use" }
-        if isMicrophoneInUse() { return "microphone in use" }
+        if isCameraInUse() { return String(localized: "camera in use") }
+        if isMicrophoneInUse() { return String(localized: "microphone in use") }
         return nil
     }
 

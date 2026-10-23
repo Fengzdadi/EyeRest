@@ -2,7 +2,8 @@ import Foundation
 import Testing
 @testable import EyeRestCore
 
-// Most tests use a 60 s work interval and 20 s breaks; see `Rig.init`.
+// Most tests use a 60 s work interval, 20 s breaks and a 300 s long break
+// every 3rd break; see `Rig.init`.
 
 @MainActor
 struct WorkAndBreak {
@@ -310,6 +311,97 @@ struct HeadsUp {
 }
 
 @MainActor
+struct LongBreaks {
+    @Test func everyThirdBreakIsLong() {
+        var rig = Rig()
+        rig.takeShortBreak()
+        rig.takeShortBreak()
+        #expect(rig.timer.nextBreakIsLong)
+        rig.advance(60)
+        #expect(rig.state == .onBreak)
+        #expect(rig.timer.isLongBreak)
+        #expect(rig.remaining == 300)
+        #expect(rig.advance(299).isEmpty)
+        #expect(rig.tick() == .breakFinished)
+        #expect(rig.timer.breaksSinceLong == 0)
+        #expect(!rig.timer.nextBreakIsLong)
+    }
+
+    @Test func skippedShortBreaksStillCount() {
+        var rig = Rig()
+        for _ in 0..<2 {
+            rig.advance(60)
+            rig.timer.skipBreak()
+        }
+        rig.advance(60)
+        #expect(rig.timer.isLongBreak)
+    }
+
+    @Test func postponingALongBreakKeepsItLong() {
+        var rig = Rig()
+        rig.takeShortBreak()
+        rig.takeShortBreak()
+        rig.advance(60)
+        rig.timer.postponeBreak()
+        #expect(rig.timer.nextBreakIsLong)
+        rig.advance(30)
+        #expect(rig.timer.isLongBreak)
+    }
+
+    @Test func skippingALongBreakStartsTheCountOver() {
+        var rig = Rig()
+        rig.takeShortBreak()
+        rig.takeShortBreak()
+        rig.advance(60)
+        rig.timer.skipBreak()
+        #expect(rig.timer.breaksSinceLong == 0)
+    }
+
+    @Test func beingAwayForALongBreakCountsAsOne() {
+        var rig = Rig()
+        rig.takeShortBreak()
+        rig.takeShortBreak()
+        rig.probe.idle = 300
+        rig.tick()
+        #expect(rig.state == .away)
+        #expect(rig.timer.breaksSinceLong == 0)
+        #expect(!rig.timer.nextBreakIsLong)
+    }
+
+    @Test func aShortAbsenceDoesNotCount() {
+        var rig = Rig()
+        rig.takeShortBreak()
+        rig.takeShortBreak()
+        rig.probe.idle = 150
+        rig.tick()
+        #expect(rig.state == .away)
+        #expect(rig.timer.nextBreakIsLong)
+    }
+
+    @Test func sleepingLongerThanALongBreakCountsAsOne() {
+        var rig = Rig()
+        rig.takeShortBreak()
+        rig.takeShortBreak()
+        rig.tick(3600)
+        #expect(!rig.timer.nextBreakIsLong)
+    }
+
+    @Test func canBeTurnedOff() {
+        var rig = Rig { $0.longBreakEvery = 0 }
+        for _ in 0..<5 { rig.takeShortBreak() }
+        #expect(!rig.timer.nextBreakIsLong)
+    }
+
+    @Test func breakLengthFollowsTheNextBreak() {
+        var rig = Rig()
+        #expect(rig.timer.breakLength == 20)
+        rig.takeShortBreak()
+        rig.takeShortBreak()
+        #expect(rig.timer.breakLength == 300)
+    }
+}
+
+@MainActor
 struct ClockEdges {
     @Test func aClockGoingBackwardsIsIgnored() {
         var rig = Rig()
@@ -383,6 +475,8 @@ struct Rig {
         config.headsUpSeconds = 10
         config.typingPauseSeconds = 2
         config.maxTypingWaitSeconds = 30
+        config.longBreakEvery = 3
+        config.longBreakSeconds = 300
         configure(&config)
         timer = BreakTimer(config: config)
     }
@@ -395,6 +489,13 @@ struct Rig {
     mutating func tick(_ elapsed: TimeInterval = 1) -> BreakTimer.Event? {
         now += elapsed
         return timer.tick(elapsed: elapsed, now: now, probe: probe)
+    }
+
+    /// Works through one interval and takes the (short) break that follows.
+    mutating func takeShortBreak() {
+        advance(60)
+        precondition(state == .onBreak && !timer.isLongBreak)
+        advance(20)
     }
 
     /// One tick per second for `seconds` seconds. Returns the events seen.

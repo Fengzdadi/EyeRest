@@ -11,6 +11,8 @@ something 20 feet (about 6 m) away for 20 seconds.
 
 - Full-screen break on every display, including over full-screen apps.
   Press **Esc** to skip, or postpone 5 minutes.
+- **A long break every hour.** Every third break lasts 5 minutes and asks you
+  to stand up and move. Being away for 5 minutes counts as one.
 - **Heads-up first.** A small pill at the top of the screen counts down the
   last 10 seconds, with Start Now and +5 min buttons. It never takes keyboard
   focus, so you can keep typing.
@@ -27,7 +29,10 @@ something 20 feet (about 6 m) away for 20 seconds.
 
   When you're free again it gives you a minute before the break starts.
 - Pause for 30 minutes, 1 hour or until you resume.
-- Configurable interval (20/30/45/60 min) and break length (20/30/60 s).
+- Configurable interval (20/30/45/60 min), break length (20/30/60 s), long
+  break frequency and length, and the sound at the end of a break.
+- English and Simplified Chinese (界面支持简体中文). Pick one under
+  **Language** in the menu, or follow the system.
 - Launch at login.
 - No camera, microphone, accessibility or network access needed. It only reads
   whether devices are busy, never their contents. Calendar access is asked for
@@ -69,6 +74,9 @@ Any setting can be overridden for one run, for example
 | `headsUpSeconds` | 10 | Heads-up before a break (0 turns it off) |
 | `typingPauseSeconds` | 2 | A due break waits for this long without a key press |
 | `maxTypingWaitSeconds` | 30 | Start the break anyway after waiting this long for a pause |
+| `longBreakEvery` | 3 | Every Nth break is a long one (0 turns long breaks off) |
+| `longBreakSeconds` | 300 | Long break length |
+| `playSound` | true | Play a sound when a break ends |
 | `graceSeconds` | 60 | Wait after a call or meeting ends before a held break |
 | `holdDuringCalls` | true | Hold breaks while the camera or mic is in use |
 | `holdDuringSlideshows` | true | Hold breaks during Keynote or PowerPoint slideshows |
@@ -112,6 +120,8 @@ calls. It reads the Mac's state through an `ActivityProbe`, so the tests in
 | `BreakOverlay.swift` | Non-activating full-screen panels, so focus goes back to your app after the break |
 | `StatusMenu.swift` | Menu bar icon, countdown and menu |
 | `PanelSupport.swift` | Screen-under-mouse lookup and fade animations shared by the panels |
+| `Resources/*.lproj` | Translations; the keys are the English text in the code |
+| `scripts/make-icon.swift` | Draws the app icon: `swift scripts/make-icon.swift` |
 
 ## License
 

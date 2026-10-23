@@ -11,6 +11,8 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/EyeRest"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
+cp Resources/AppIcon.icns "$APP/Contents/Resources/"
+cp -R Resources/*.lproj "$APP/Contents/Resources/"
 codesign --force --sign - "$APP"
 
 echo "Built $APP"

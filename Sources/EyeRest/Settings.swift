@@ -18,6 +18,9 @@ enum Settings {
             "headsUpSeconds": 10,
             "typingPauseSeconds": 2.0,
             "maxTypingWaitSeconds": 30,
+            "longBreakEvery": 3,
+            "longBreakSeconds": 5 * 60,
+            "playSound": true,
             "holdDuringCalls": true,
             "holdDuringSlideshows": true,
             "holdDuringMeetings": false,
@@ -68,6 +71,39 @@ enum Settings {
         defaults.integer(forKey: "maxTypingWaitSeconds")
     }
 
+    /// Every this many breaks, the break is a long one. 0 turns long breaks off.
+    static var longBreakEvery: Int {
+        get { defaults.integer(forKey: "longBreakEvery") }
+        set { defaults.set(newValue, forKey: "longBreakEvery") }
+    }
+
+    static var longBreakSeconds: Int {
+        get { defaults.integer(forKey: "longBreakSeconds") }
+        set { defaults.set(newValue, forKey: "longBreakSeconds") }
+    }
+
+    /// Play a sound when a break ends.
+    static var playSound: Bool {
+        get { defaults.bool(forKey: "playSound") }
+        set { defaults.set(newValue, forKey: "playSound") }
+    }
+
+    /// The app's own language ("en", "zh-Hans"), or nil to follow the system.
+    /// macOS reads it at launch, so a change takes effect after a relaunch.
+    static var language: String? {
+        get {
+            guard let id = Bundle.main.bundleIdentifier else { return nil }
+            return (defaults.persistentDomain(forName: id)?["AppleLanguages"] as? [String])?.first
+        }
+        set {
+            if let newValue {
+                defaults.set([newValue], forKey: "AppleLanguages")
+            } else {
+                defaults.removeObject(forKey: "AppleLanguages")
+            }
+        }
+    }
+
     /// Hold a due break while the camera or microphone is in use.
     static var holdDuringCalls: Bool {
         get { defaults.bool(forKey: "holdDuringCalls") }
@@ -105,6 +141,8 @@ extension BreakTimer.Config {
         config.headsUpSeconds = TimeInterval(Settings.headsUpSeconds)
         config.typingPauseSeconds = Settings.typingPauseSeconds
         config.maxTypingWaitSeconds = TimeInterval(Settings.maxTypingWaitSeconds)
+        config.longBreakEvery = Settings.longBreakEvery
+        config.longBreakSeconds = TimeInterval(Settings.longBreakSeconds)
         return config
     }
 }

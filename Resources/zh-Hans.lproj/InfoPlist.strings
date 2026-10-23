@@ -1,0 +1,2 @@
+/* Simplified Chinese for Info.plist strings. */
+"NSCalendarsFullAccessUsageDescription" = "EyeRest 会查看你当前是否在开会，避免在会议中途弹出休息。数据不会离开你的 Mac。";

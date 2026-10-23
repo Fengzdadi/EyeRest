@@ -14,7 +14,8 @@ final class StatusMenu: NSObject, NSMenuDelegate {
     private var shownSymbol = ""
     private var shownTitle = ""
 
-    /// Launch at login only works when running from a real .app bundle.
+    /// Launch at login and the language setting only work when running from a
+    /// real .app bundle.
     private var isBundled: Bool { Bundle.main.bundleIdentifier != nil }
 
     init(scheduler: BreakScheduler) {
@@ -68,52 +69,61 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         menu.addItem(.separator())
 
         if case .paused = scheduler.state {
-            menu.addItem(actionItem("Resume", #selector(resume)))
+            menu.addItem(actionItem(String(localized: "Resume"), #selector(resume)))
         } else {
-            menu.addItem(actionItem("Take a Break Now", #selector(takeBreakNow)))
-            let pause = NSMenuItem(title: "Pause", action: nil, keyEquivalent: "")
+            menu.addItem(actionItem(String(localized: "Take a Break Now"), #selector(takeBreakNow)))
+            let pause = NSMenuItem(title: String(localized: "Pause"), action: nil, keyEquivalent: "")
             pause.submenu = NSMenu()
-            pause.submenu?.addItem(actionItem("For 30 Minutes", #selector(pauseFor(_:)), tag: 30 * 60))
-            pause.submenu?.addItem(actionItem("For 1 Hour", #selector(pauseFor(_:)), tag: 60 * 60))
-            pause.submenu?.addItem(actionItem("Until I Resume", #selector(pauseFor(_:)), tag: 0))
+            pause.submenu?.addItem(actionItem(String(localized: "For 30 Minutes"), #selector(pauseFor(_:)), tag: 30 * 60))
+            pause.submenu?.addItem(actionItem(String(localized: "For 1 Hour"), #selector(pauseFor(_:)), tag: 60 * 60))
+            pause.submenu?.addItem(actionItem(String(localized: "Until I Resume"), #selector(pauseFor(_:)), tag: 0))
             menu.addItem(pause)
         }
 
         menu.addItem(.separator())
         menu.addItem(choiceMenu(
-            "Break Every",
+            String(localized: "Break Every"),
             options: [20 * 60, 30 * 60, 45 * 60, 60 * 60],
             current: Settings.workSeconds,
-            label: { "\($0 / 60) minutes" },
+            label: { String(localized: "\($0 / 60) minutes") },
             action: #selector(setWorkInterval(_:))))
         menu.addItem(choiceMenu(
-            "Break Length",
+            String(localized: "Break Length"),
             options: [20, 30, 60],
             current: Settings.breakSeconds,
-            label: { "\($0) seconds" },
+            label: { String(localized: "\($0) seconds") },
             action: #selector(setBreakLength(_:))))
+        menu.addItem(longBreakMenu())
         menu.addItem(holdMenu())
-        menu.addItem(toggleItem("Show Timer in Menu Bar", Settings.showTimer, #selector(toggleShowTimer)))
-        let login = toggleItem("Launch at Login", SMAppService.mainApp.status == .enabled, #selector(toggleLaunchAtLogin))
-        if !isBundled {
-            login.action = nil
-            login.toolTip = "Build the .app with `make app` to enable this."
-        }
+
+        menu.addItem(.separator())
+        menu.addItem(toggleItem(String(localized: "Show Timer in Menu Bar"), Settings.showTimer, #selector(toggleShowTimer)))
+        menu.addItem(toggleItem(String(localized: "Sound When a Break Ends"), Settings.playSound, #selector(togglePlaySound)))
+        menu.addItem(languageMenu())
+        let login = toggleItem(String(localized: "Launch at Login"), SMAppService.mainApp.status == .enabled, #selector(toggleLaunchAtLogin))
+        if !isBundled { disable(login) }
         menu.addItem(login)
 
         menu.addItem(.separator())
-        menu.addItem(actionItem("Quit EyeRest", #selector(quit), key: "q"))
+        menu.addItem(actionItem(String(localized: "Quit EyeRest"), #selector(quit), key: "q"))
     }
 
     private func statusText() -> String {
         switch scheduler.state {
-        case .working: return "Next break in \(clockTime(scheduler.remaining))"
-        case .waiting(let reason): return "Break due, waiting (\(reason))"
-        case .away: return "Away, timer restarts when you're back"
-        case .waitingForTyping: return "Break when you pause typing"
-        case .onBreak: return "On a break"
-        case .paused(nil): return "Paused"
-        case .paused(let until?): return "Paused until \(until.formatted(date: .omitted, time: .shortened))"
+        case .working:
+            let time = clockTime(scheduler.remaining)
+            return scheduler.nextBreakIsLong
+                ? String(localized: "Next long break in \(time)")
+                : String(localized: "Next break in \(time)")
+        case .waiting(let reason): return String(localized: "Break due, waiting (\(reason))")
+        case .away: return String(localized: "Away, timer restarts when you're back")
+        case .waitingForTyping: return String(localized: "Break when you pause typing")
+        case .onBreak:
+            return scheduler.isLongBreak ? String(localized: "On a long break") : String(localized: "On a break")
+        case .paused(nil): return String(localized: "Paused")
+        case .paused(let until?):
+            let time = until.formatted(date: .omitted, time: .shortened)
+            return String(localized: "Paused until \(time)")
         }
     }
 
@@ -133,6 +143,14 @@ final class StatusMenu: NSObject, NSMenuDelegate {
 
     @objc private func setBreakLength(_ sender: NSMenuItem) {
         Settings.breakSeconds = sender.tag
+    }
+
+    @objc private func setLongBreakEvery(_ sender: NSMenuItem) {
+        Settings.longBreakEvery = sender.tag
+    }
+
+    @objc private func setLongBreakLength(_ sender: NSMenuItem) {
+        Settings.longBreakSeconds = sender.tag
     }
 
     @objc private func toggleHoldDuringCalls() {
@@ -159,8 +177,8 @@ final class StatusMenu: NSObject, NSMenuDelegate {
                 Settings.holdDuringMeetings = true
             } else {
                 let alert = NSAlert()
-                alert.messageText = "EyeRest can't read your calendar"
-                alert.informativeText = "Allow access in System Settings > Privacy & Security > Calendars, then turn this on again."
+                alert.messageText = String(localized: "EyeRest can't read your calendar")
+                alert.informativeText = String(localized: "Allow access in System Settings > Privacy & Security > Calendars, then turn this on again.")
                 alert.runModal()
             }
         }
@@ -169,6 +187,18 @@ final class StatusMenu: NSObject, NSMenuDelegate {
     @objc private func toggleShowTimer() {
         Settings.showTimer.toggle()
         refresh()
+    }
+
+    @objc private func togglePlaySound() {
+        Settings.playSound.toggle()
+    }
+
+    /// The menu item's tag indexes `languages`.
+    @objc private func setLanguage(_ sender: NSMenuItem) {
+        let code = Self.languages[sender.tag].code
+        guard code != Settings.language else { return }
+        Settings.language = code
+        relaunch()
     }
 
     @objc private func toggleLaunchAtLogin() {
@@ -185,6 +215,79 @@ final class StatusMenu: NSObject, NSMenuDelegate {
 
     @objc private func quit() { NSApp.terminate(nil) }
 
+    /// The language is read at launch, so start a fresh copy of the app once
+    /// this one has quit.
+    private func relaunch() {
+        let reopen = Process()
+        reopen.executableURL = URL(fileURLWithPath: "/bin/sh")
+        reopen.arguments = ["-c", "sleep 0.5; /usr/bin/open \"$0\"", Bundle.main.bundlePath]
+        try? reopen.run()
+        NSApp.terminate(nil)
+    }
+
+    // MARK: Submenus
+
+    /// "Hold Breaks During" submenu: the things that make a due break wait.
+    private func holdMenu() -> NSMenuItem {
+        let parent = NSMenuItem(title: String(localized: "Hold Breaks During"), action: nil, keyEquivalent: "")
+        parent.submenu = NSMenu()
+        parent.submenu?.addItem(toggleItem(String(localized: "Calls (Camera or Mic in Use)"), Settings.holdDuringCalls, #selector(toggleHoldDuringCalls)))
+        parent.submenu?.addItem(toggleItem(String(localized: "Keynote and PowerPoint Slideshows"), Settings.holdDuringSlideshows, #selector(toggleHoldDuringSlideshows)))
+        let meetings = toggleItem(
+            String(localized: "Calendar Meetings"),
+            Settings.holdDuringMeetings && scheduler.calendar.hasAccess,
+            #selector(toggleHoldDuringMeetings))
+        if !scheduler.calendar.canRequestAccess { disable(meetings) }
+        parent.submenu?.addItem(meetings)
+        return parent
+    }
+
+    /// How often long breaks come (shown in minutes, stored as every Nth break)
+    /// and how long they last.
+    private func longBreakMenu() -> NSMenuItem {
+        let parent = NSMenuItem(title: String(localized: "Long Breaks"), action: nil, keyEquivalent: "")
+        let submenu = NSMenu()
+        let workMinutes = Settings.workSeconds / 60
+        let every = Settings.longBreakEvery
+        let everyOptions = [0, 2, 3, 4]
+        for n in everyOptions.contains(every) ? everyOptions : (everyOptions + [every]).sorted() {
+            let title = n == 0 ? String(localized: "Off") : String(localized: "Every \(n * workMinutes) Minutes")
+            let item = actionItem(title, #selector(setLongBreakEvery(_:)), tag: n)
+            item.state = n == every ? .on : .off
+            submenu.addItem(item)
+        }
+        submenu.addItem(.separator())
+        let length = Settings.longBreakSeconds
+        let lengthOptions = [5 * 60, 10 * 60]
+        for seconds in lengthOptions.contains(length) ? lengthOptions : (lengthOptions + [length]).sorted() {
+            let item = actionItem(String(localized: "Lasting \(seconds / 60) Minutes"), #selector(setLongBreakLength(_:)), tag: seconds)
+            item.state = seconds == length ? .on : .off
+            if every == 0 { item.action = nil }
+            submenu.addItem(item)
+        }
+        parent.submenu = submenu
+        return parent
+    }
+
+    /// Language names are shown in their own language, as macOS does.
+    private static let languages: [(code: String?, name: String)] = [
+        (nil, String(localized: "System Default")),
+        ("en", "English"),
+        ("zh-Hans", "简体中文"),
+    ]
+
+    private func languageMenu() -> NSMenuItem {
+        let parent = NSMenuItem(title: String(localized: "Language"), action: nil, keyEquivalent: "")
+        parent.submenu = NSMenu()
+        for (index, language) in Self.languages.enumerated() {
+            let item = actionItem(language.name, #selector(setLanguage(_:)), tag: index)
+            item.state = language.code == Settings.language ? .on : .off
+            parent.submenu?.addItem(item)
+        }
+        if !isBundled { disable(parent) }
+        return parent
+    }
+
     // MARK: Helpers
 
     private func actionItem(_ title: String, _ action: Selector, tag: Int = 0, key: String = "") -> NSMenuItem {
@@ -200,22 +303,10 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         return item
     }
 
-    /// "Hold Breaks During" submenu: the things that make a due break wait.
-    private func holdMenu() -> NSMenuItem {
-        let parent = NSMenuItem(title: "Hold Breaks During", action: nil, keyEquivalent: "")
-        parent.submenu = NSMenu()
-        parent.submenu?.addItem(toggleItem("Calls (Camera or Mic in Use)", Settings.holdDuringCalls, #selector(toggleHoldDuringCalls)))
-        parent.submenu?.addItem(toggleItem("Keynote and PowerPoint Slideshows", Settings.holdDuringSlideshows, #selector(toggleHoldDuringSlideshows)))
-        let meetings = toggleItem(
-            "Calendar Meetings",
-            Settings.holdDuringMeetings && scheduler.calendar.hasAccess,
-            #selector(toggleHoldDuringMeetings))
-        if !scheduler.calendar.canRequestAccess {
-            meetings.action = nil
-            meetings.toolTip = "Build the .app with `make app` to enable this."
-        }
-        parent.submenu?.addItem(meetings)
-        return parent
+    private func disable(_ item: NSMenuItem) {
+        item.action = nil
+        item.submenu = nil
+        item.toolTip = String(localized: "Build the .app with `make app` to enable this.")
     }
 
     /// A submenu of checkable options. A custom value set from the command line

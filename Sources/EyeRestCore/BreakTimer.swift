@@ -49,6 +49,9 @@ public struct BreakTimer {
         public var typingPauseSeconds: TimeInterval = 2
         /// ...but starts anyway once it has waited this long.
         public var maxTypingWaitSeconds: TimeInterval = 30
+        /// Every this many breaks, the break is a long one; 0 turns long breaks off.
+        public var longBreakEvery = 3
+        public var longBreakSeconds: TimeInterval = 5 * 60
 
         public init() {}
     }
@@ -64,6 +67,22 @@ public struct BreakTimer {
     public private(set) var remaining: TimeInterval
     /// Whether the heads-up should be on screen.
     public private(set) var showsHeadsUp = false
+    /// Whether the current break, if any, is a long one.
+    public private(set) var isLongBreak = false
+    /// Breaks taken since the last long one (or since the user was away for
+    /// at least a long break's length).
+    public private(set) var breaksSinceLong = 0
+
+    /// Whether the next break will be a long one.
+    public var nextBreakIsLong: Bool {
+        config.longBreakEvery > 0 && breaksSinceLong + 1 >= config.longBreakEvery
+    }
+
+    /// Length of the current break, or of the next one.
+    public var breakLength: TimeInterval {
+        let long = state == .onBreak ? isLongBreak : nextBreakIsLong
+        return long ? config.longBreakSeconds : config.breakSeconds
+    }
 
     /// Total seconds ticked so far: the timer's own monotonic clock.
     private var clock: TimeInterval = 0
@@ -95,7 +114,8 @@ public struct BreakTimer {
             if remaining <= 0 {
                 // A gap longer than the whole break means the Mac slept through
                 // it, so end the break quietly.
-                if elapsed <= config.breakSeconds { event = .breakFinished }
+                if elapsed <= breakLength { event = .breakFinished }
+                countBreak()
                 endBreak(nextIn: config.workSeconds)
             }
 
@@ -104,6 +124,10 @@ public struct BreakTimer {
                 state = .away
                 remaining = config.workSeconds
                 dueSince = nil
+                // Away for as long as a long break counts as one.
+                if max(elapsed, probe.idleSeconds()) >= config.longBreakSeconds {
+                    breaksSinceLong = 0
+                }
             } else {
                 remaining = max(0, remaining - elapsed)
                 if remaining > 0 {
@@ -133,7 +157,10 @@ public struct BreakTimer {
         startBreak()
     }
 
+    /// Skipping still counts toward the next long break, so skipping short
+    /// breaks doesn't put a long one off.
     public mutating func skipBreak() {
+        if state == .onBreak { countBreak() }
         endBreak(nextIn: config.workSeconds)
     }
 
@@ -201,13 +228,20 @@ public struct BreakTimer {
 
     private mutating func startBreak() {
         dueSince = nil
+        isLongBreak = nextBreakIsLong
         state = .onBreak
-        remaining = config.breakSeconds
+        remaining = breakLength
         showsHeadsUp = false
+    }
+
+    /// Records a break that ended by running out or being skipped.
+    private mutating func countBreak() {
+        breaksSinceLong = isLongBreak ? 0 : breaksSinceLong + 1
     }
 
     private mutating func endBreak(nextIn interval: TimeInterval) {
         dueSince = nil
+        isLongBreak = false
         state = .working
         remaining = interval
         showsHeadsUp = false
