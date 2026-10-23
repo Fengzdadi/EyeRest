@@ -1,5 +1,8 @@
 import AppKit
 import SwiftUI
+import os
+
+private let log = Logger(subsystem: "io.github.fengzdadi.EyeRest", category: "overlay")
 
 /// Full-screen break screen on every display.
 @MainActor
@@ -8,6 +11,8 @@ final class BreakOverlay {
     var onPostpone: (() -> Void)?
 
     private var panels: [OverlayPanel] = []
+    private var keyPanel: OverlayPanel?
+    private var focusTimer: Timer?
 
     func show(scheduler: BreakScheduler) {
         guard panels.isEmpty else { return }
@@ -32,32 +37,44 @@ final class BreakOverlay {
 
             panel.contentView = blur
             panel.setFrame(screen.frame, display: false)
-            panel.alphaValue = 0
-            panel.orderFrontRegardless()
+            panel.fadeIn(duration: 0.6)
             panels.append(panel)
         }
 
         // Take keyboard focus (for Esc) on the screen the mouse is on, without
         // activating the app, so focus returns to the user's app afterwards.
-        let mouse = NSEvent.mouseLocation
-        let keyPanel = panels.first { $0.frame.contains(mouse) } ?? panels.first
-        keyPanel?.makeKey()
-
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.6
-            panels.forEach { $0.animator().alphaValue = 1 }
-        }
+        let screen = NSScreen.underMouse
+        keyPanel = panels.first { $0.frame == screen?.frame } ?? panels.first
+        focusWhenTypingPauses()
     }
 
     func hide() {
-        let closing = panels
+        focusTimer?.invalidate()
+        focusTimer = nil
+        keyPanel = nil
+        panels.forEach { $0.fadeOut(duration: 0.4) }
         panels = []
-        NSAnimationContext.runAnimationGroup({ context in
-            context.duration = 0.4
-            closing.forEach { $0.animator().alphaValue = 0 }
-        }, completionHandler: {
-            closing.forEach { $0.orderOut(nil) }
-        })
+    }
+
+    /// A break can start while the user is still typing (after the typing wait
+    /// runs out). Taking focus then would swallow their keystrokes, so wait for
+    /// a one-second pause; until then keys keep going to their app.
+    private func focusWhenTypingPauses() {
+        guard Activity.secondsSinceKeyPress() < 1 else {
+            keyPanel?.makeKey()
+            log.notice("break screen took keyboard focus")
+            return
+        }
+        guard focusTimer == nil else { return }
+        focusTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, Activity.secondsSinceKeyPress() >= 1 else { return }
+                self.focusTimer?.invalidate()
+                self.focusTimer = nil
+                self.keyPanel?.makeKey()
+                log.notice("break screen took keyboard focus after typing paused")
+            }
+        }
     }
 }
 
@@ -119,9 +136,12 @@ private struct BreakView: View {
                 }
 
                 HStack(spacing: 12) {
+                    // Not focusable, so a stray Space or Return can't press them.
                     Button("Postpone \(Settings.postponeSeconds / 60) min", action: onPostpone)
+                        .focusable(false)
                     Button("Skip", action: onSkip)
                         .keyboardShortcut(.cancelAction)
+                        .focusable(false)
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.large)

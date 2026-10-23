@@ -39,6 +39,7 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         switch scheduler.state {
         case .paused: symbol = "eye.slash"
         case .onBreak: symbol = "eye.fill"
+        case .waitingForTyping: symbol = "eye"
         case .waiting: symbol = "eye.trianglebadge.exclamationmark"
         case .working, .away:
             symbol = "eye"
@@ -108,6 +109,7 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         case .working: return "Next break in \(clockTime(scheduler.remaining))"
         case .waiting(let reason): return "Break due, waiting (\(reason))"
         case .away: return "Away, timer restarts when you're back"
+        case .waitingForTyping: return "Break when you pause typing"
         case .onBreak: return "On a break"
         case .paused(nil): return "Paused"
         case .paused(let until?): return "Paused until \(until.formatted(date: .omitted, time: .shortened))"

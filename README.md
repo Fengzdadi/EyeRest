@@ -9,6 +9,12 @@ something 20 feet (about 6 m) away for 20 seconds.
 
 - Full-screen break on every display, including over full-screen apps.
   Press **Esc** to skip, or postpone 5 minutes.
+- **Heads-up first.** A small pill at the top of the screen counts down the
+  last 10 seconds, with Start Now and +5 min buttons. It never takes keyboard
+  focus, so you can keep typing.
+- **Doesn't cut you off mid-sentence.** If you're typing when the break is due,
+  it waits for a 2-second pause (at most 30 seconds). If it does start while
+  you type, your keys keep going to your app until you pause.
 - **Knows when you're away.** No input for 2 minutes, a locked screen or a
   sleeping Mac counts as a natural break and restarts the timer. Watching a
   video (an app keeping the display awake) doesn't count as away.
@@ -57,6 +63,9 @@ Any setting can be overridden for one run, for example
 | `breakSeconds` | 20 | Break length |
 | `postponeSeconds` | 300 | How far "Postpone" pushes a break |
 | `idleResetSeconds` | 120 | Idle time that counts as a natural break |
+| `headsUpSeconds` | 10 | Heads-up before a break (0 turns it off) |
+| `typingPauseSeconds` | 2 | A due break waits for this long without a key press |
+| `maxTypingWaitSeconds` | 30 | Start the break anyway after waiting this long for a pause |
 | `graceSeconds` | 60 | Wait after a call or meeting ends before a held break |
 | `holdDuringCalls` | true | Hold breaks while the camera or mic is in use |
 | `holdDuringSlideshows` | true | Hold breaks during Keynote or PowerPoint slideshows |
@@ -87,11 +96,13 @@ To see what EyeRest is doing:
 
 | File | Role |
 |---|---|
-| `BreakScheduler.swift` | The timer and state machine: working, away, waiting while busy, on a break, paused |
+| `BreakScheduler.swift` | The timer and state machine: working, away, waiting while busy, waiting for a typing pause, on a break, paused |
 | `Activity.swift` | Idle time (`CGEventSource`), camera use (CoreMediaIO), microphone use per process (Core Audio), display-sleep assertions (IOKit), slideshow windows (`CGWindowList`) |
 | `MeetingCalendar.swift` | Current calendar meeting (EventKit) |
+| `HeadsUp.swift` | The countdown pill before a break; a panel that never becomes key |
 | `BreakOverlay.swift` | Non-activating full-screen panels, so focus goes back to your app after the break |
 | `StatusMenu.swift` | Menu bar icon, countdown and menu |
+| `PanelSupport.swift` | Screen-under-mouse lookup and fade animations shared by the panels |
 
 ## License
 

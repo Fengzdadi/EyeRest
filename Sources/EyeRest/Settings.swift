@@ -14,6 +14,9 @@ enum Settings {
             "postponeSeconds": 5 * 60,
             "idleResetSeconds": 2 * 60,
             "graceSeconds": 60,
+            "headsUpSeconds": 10,
+            "typingPauseSeconds": 2.0,
+            "maxTypingWaitSeconds": 30,
             "holdDuringCalls": true,
             "holdDuringSlideshows": true,
             "holdDuringMeetings": false,
@@ -47,6 +50,21 @@ enum Settings {
     /// long before starting it.
     static var graceSeconds: Int {
         defaults.integer(forKey: "graceSeconds")
+    }
+
+    /// Show a small heads-up this many seconds before a break. 0 turns it off.
+    static var headsUpSeconds: Int {
+        defaults.integer(forKey: "headsUpSeconds")
+    }
+
+    /// A due break waits until there has been no key press for this long...
+    static var typingPauseSeconds: TimeInterval {
+        defaults.double(forKey: "typingPauseSeconds")
+    }
+
+    /// ...but starts anyway once it has waited this long.
+    static var maxTypingWaitSeconds: Int {
+        defaults.integer(forKey: "maxTypingWaitSeconds")
     }
 
     /// Hold a due break while the camera or microphone is in use.

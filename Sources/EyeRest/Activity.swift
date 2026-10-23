@@ -13,6 +13,11 @@ enum Activity {
         CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: CGEventType(rawValue: ~0)!)
     }
 
+    /// Seconds since the last key press.
+    static func secondsSinceKeyPress() -> TimeInterval {
+        CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: .keyDown)
+    }
+
     /// True when some app (usually a video player) is keeping the display awake.
     static func isDisplayHeldAwake() -> Bool {
         var status: Unmanaged<CFDictionary>?
