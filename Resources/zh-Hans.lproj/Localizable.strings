@@ -14,6 +14,7 @@
 /* Why a break is waiting */
 "camera in use" = "摄像头使用中";
 "microphone in use" = "麦克风使用中";
+"microphone in use by %@" = "%@ 正在使用麦克风";
 "%@ slideshow" = "%@ 正在放映";
 "meeting: %@" = "会议：%@";
 "Untitled" = "无标题";

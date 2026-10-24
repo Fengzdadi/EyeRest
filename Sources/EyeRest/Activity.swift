@@ -26,11 +26,15 @@ enum Activity {
         return (dict["PreventUserIdleDisplaySleep"] ?? 0) > 0
     }
 
-    /// A short reason when a call looks to be in progress, otherwise nil.
+    /// A short reason when a call looks to be in progress, otherwise nil. It
+    /// names the app using the microphone, so one that keeps it open is easy to
+    /// spot; macOS doesn't say which app is using the camera.
+    @MainActor
     static func callInProgress() -> String? {
         if isCameraInUse() { return String(localized: "camera in use") }
-        if isMicrophoneInUse() { return String(localized: "microphone in use") }
-        return nil
+        guard let pid = microphoneUser() else { return nil }
+        if let app = appName(of: pid) { return String(localized: "microphone in use by \(app)") }
+        return String(localized: "microphone in use")
     }
 
     // MARK: Slideshows
@@ -96,22 +100,52 @@ enum Activity {
 
     // MARK: Microphone
 
-    /// Asks Core Audio which processes are currently recording. Checking per
-    /// process (rather than per device) avoids false positives from headsets like
-    /// AirPods, which are one device for both playback and recording.
-    static func isMicrophoneInUse() -> Bool {
+    /// The process recording from the microphone, if any. Asking Core Audio per
+    /// process (rather than per device) avoids false positives from headsets
+    /// like AirPods, which are one device for both playback and recording.
+    static func microphoneUser() -> pid_t? {
         var address = audioAddress(kAudioHardwarePropertyProcessObjectList)
         let system = AudioObjectID(kAudioObjectSystemObject)
         var size: UInt32 = 0
-        guard AudioObjectGetPropertyDataSize(system, &address, 0, nil, &size) == noErr else { return false }
+        guard AudioObjectGetPropertyDataSize(system, &address, 0, nil, &size) == noErr else { return nil }
 
         var processes = [AudioObjectID](repeating: 0, count: Int(size) / MemoryLayout<AudioObjectID>.size)
-        guard AudioObjectGetPropertyData(system, &address, 0, nil, &size, &processes) == noErr else { return false }
+        guard AudioObjectGetPropertyData(system, &address, 0, nil, &size, &processes) == noErr else { return nil }
 
         let ownPID = ProcessInfo.processInfo.processIdentifier
-        return processes.contains { process in
-            audioProperty(process, kAudioProcessPropertyIsRunningInput, default: UInt32(0)) != 0
-                && audioProperty(process, kAudioProcessPropertyPID, default: pid_t(0)) != ownPID
+        return processes.lazy
+            .filter { audioProperty($0, kAudioProcessPropertyIsRunningInput, default: UInt32(0)) != 0 }
+            .map { audioProperty($0, kAudioProcessPropertyPID, default: pid_t(0)) }
+            .first { $0 != ownPID }
+    }
+
+    /// What to call the app a process belongs to. Core Audio often sees a
+    /// helper, such as a browser's audio service, which is named after the app
+    /// bundle it ships in; a WebKit media process is named after the app it
+    /// works for ("Mail Graphics and Media").
+    @MainActor
+    static func appName(of pid: pid_t) -> String? {
+        if let path = processString(size: 4 * Int(MAXPATHLEN), { proc_pidpath(pid, $0, $1) }),
+           let app = outermostApp(in: path) {
+            let running = NSWorkspace.shared.runningApplications.first { $0.bundleURL?.path == app.path }
+            return running?.localizedName ?? app.deletingPathExtension().lastPathComponent
+        }
+        return NSRunningApplication(processIdentifier: pid)?.localizedName
+            ?? processString(size: 256) { proc_name(pid, $0, $1) }
+    }
+
+    /// The outermost app bundle in `path`, if any.
+    private static func outermostApp(in path: String) -> URL? {
+        let components = URL(fileURLWithPath: path).pathComponents
+        guard let end = components.firstIndex(where: { $0.hasSuffix(".app") }) else { return nil }
+        return URL(fileURLWithPath: NSString.path(withComponents: Array(components[...end])))
+    }
+
+    /// A string that a libproc call writes into a buffer, or nil if it fails.
+    private static func processString(size: Int, _ call: (UnsafeMutablePointer<CChar>, UInt32) -> Int32) -> String? {
+        var buffer = [CChar](repeating: 0, count: size)
+        return buffer.withUnsafeMutableBufferPointer { buffer in
+            call(buffer.baseAddress!, UInt32(buffer.count)) > 0 ? String(cString: buffer.baseAddress!) : nil
         }
     }
 

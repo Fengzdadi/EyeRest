@@ -117,11 +117,7 @@ private struct BreakView: View {
                 ZStack {
                     Circle()
                         .stroke(.white.opacity(0.15), lineWidth: 6)
-                    Circle()
-                        .trim(from: 0, to: left / total)
-                        .stroke(.white, style: StrokeStyle(lineWidth: 6, lineCap: .round))
-                        .rotationEffect(.degrees(-90))
-                        .animation(.linear(duration: 1), value: left)
+                    CountdownRing(left: left, total: total)
                     // Long breaks count down in minutes and seconds.
                     Text(verbatim: total >= 60 ? String(format: "%d:%02d", seconds / 60, seconds % 60) : "\(seconds)")
                         .font(.system(size: total >= 60 ? 52 : 64, weight: .light, design: .rounded))
@@ -155,5 +151,63 @@ private struct BreakView: View {
             .foregroundStyle(.white)
         }
         .ignoresSafeArea()
+    }
+}
+
+/// The ring that runs down over the break. Core Animation moves it in the
+/// render server; a SwiftUI animation would redraw the break screen at the
+/// display's refresh rate, on every display, for the whole break.
+private struct CountdownRing: NSViewRepresentable {
+    let left: TimeInterval
+    let total: TimeInterval
+
+    func makeNSView(context: Context) -> RingView { RingView() }
+
+    func updateNSView(_ ring: RingView, context: Context) {
+        ring.runDown(from: left / total, over: left)
+    }
+}
+
+private final class RingView: NSView {
+    private let ring = CAShapeLayer()
+    /// When the running animation empties the ring, in `CACurrentMediaTime()`.
+    private var emptyAt: CFTimeInterval?
+
+    init() {
+        super.init(frame: .zero)
+        wantsLayer = true
+        ring.fillColor = nil
+        ring.strokeColor = NSColor.white.cgColor
+        ring.lineWidth = 6
+        ring.lineCap = .round
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) isn't used") }
+
+    override func makeBackingLayer() -> CALayer { ring }
+    override var wantsUpdateLayer: Bool { true }
+
+    override func setFrameSize(_ size: NSSize) {
+        super.setFrameSize(size)
+        // The same circle as the track behind it, from 12 o'clock clockwise.
+        let path = CGMutablePath()
+        path.addArc(center: CGPoint(x: size.width / 2, y: size.height / 2), radius: min(size.width, size.height) / 2,
+                    startAngle: .pi / 2, endAngle: .pi / 2 - 2 * .pi, clockwise: true)
+        ring.path = path
+    }
+
+    /// Runs the ring down from `fraction` full to empty over `seconds`. Every
+    /// tick asks again, so the animation only restarts when the ring and the
+    /// timer drift apart, as after the Mac sleeps.
+    func runDown(from fraction: Double, over seconds: TimeInterval) {
+        let now = CACurrentMediaTime()
+        if let emptyAt, abs(emptyAt - (now + seconds)) < 0.5 { return }
+        emptyAt = now + seconds
+        let animation = CABasicAnimation(keyPath: "strokeEnd")
+        animation.fromValue = fraction
+        animation.toValue = 0
+        animation.duration = seconds
+        ring.strokeEnd = 0
+        ring.add(animation, forKey: "runDown")
     }
 }

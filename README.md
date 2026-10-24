@@ -127,10 +127,11 @@ To change one permanently: `defaults write io.github.fengzdadi.EyeRest idleReset
 ### What counts as busy
 
 - **Call:** any app recording from the microphone, or any camera running.
-  Some apps stop the mic when you mute, so a muted call with the camera off may
-  not count; turn on calendar meetings to cover those. While calls hold
-  breaks, a call also keeps you at the screen: listening without touching the
-  keyboard or mouse isn't taken for being away.
+  The menu names the app using the microphone, so one that keeps it open is
+  easy to spot. Some apps stop the mic when you mute, so a muted call with the
+  camera off may not count; turn on calendar meetings to cover those. While
+  calls hold breaks, a call also keeps you at the screen: listening without
+  touching the keyboard or mouse isn't taken for being away.
 - **Slideshow:** a Keynote or PowerPoint window covering a whole display.
   Editing a deck in native full screen looks the same, so it counts too.
 - **Calendar meeting:** a timed event happening now that you haven't declined,
@@ -156,7 +157,7 @@ calls. It reads the Mac's state through an `ActivityProbe`, so the tests in
 | `BreakScheduler.swift` | Ticks the timer once a second and mirrors it into the break screen, heads-up and menu |
 | `LiveProbe.swift` | The real `ActivityProbe`: idle time, screen lock, and the "Hold Breaks During" checks, the slow ones reused for 5 seconds |
 | `EyeRestCore/CachedCheck.swift` | Keeps a slow check's answer for a few seconds |
-| `Activity.swift` | Idle time (`CGEventSource`), camera use (CoreMediaIO), microphone use per process (Core Audio), display-sleep assertions (IOKit), slideshow windows (`CGWindowList`) |
+| `Activity.swift` | Idle time (`CGEventSource`), camera use (CoreMediaIO), microphone use per process and the app behind it (Core Audio), display-sleep assertions (IOKit), slideshow windows (`CGWindowList`) |
 | `MeetingCalendar.swift` | Current calendar meeting (EventKit) |
 | `HeadsUp.swift` | The countdown pill before a break; a panel that never becomes key |
 | `BreakOverlay.swift` | Non-activating full-screen panels, so focus goes back to your app after the break |
