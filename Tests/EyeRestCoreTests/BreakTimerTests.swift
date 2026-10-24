@@ -150,6 +150,109 @@ struct Away {
         #expect(rig.state == .working)
         #expect(rig.remaining == 30)
     }
+
+    @Test func aCallWithoutInputIsNotAway() {
+        var rig = Rig()
+        rig.probe.inCall = true
+        rig.probe.idle = 120
+        rig.advance(30)
+        #expect(rig.state == .working)
+        #expect(rig.remaining == 30)
+    }
+
+    @Test func aHeldBreakSurvivesACallWithoutInput() {
+        var rig = Rig()
+        rig.probe.busy = "camera in use"
+        rig.probe.inCall = true
+        rig.advance(60)
+        rig.probe.idle = 120  // listening, hands off the keyboard
+        rig.advance(30)
+        #expect(rig.state == .waiting(reason: "camera in use"))
+
+        rig.probe.busy = nil
+        rig.probe.inCall = false
+        rig.probe.idle = 0
+        rig.tick()
+        #expect(rig.state == .working)
+        #expect(rig.remaining == 10)  // the grace, then the held break
+    }
+
+    @Test func idleAfterTheCallEndsIsAway() {
+        var rig = Rig()
+        rig.probe.inCall = true
+        rig.probe.idle = 120
+        rig.tick()
+        #expect(rig.state == .working)
+        rig.probe.inCall = false
+        rig.tick()
+        #expect(rig.state == .away)
+    }
+
+    @Test func aLockedScreenIsAwayEvenInACall() {
+        var rig = Rig()
+        rig.probe.inCall = true
+        rig.probe.isScreenLocked = true
+        rig.tick()
+        #expect(rig.state == .away)
+    }
+
+    @Test func onceAwayOnlyInputBringsYouBack() {
+        var rig = Rig()
+        rig.probe.idle = 120
+        rig.tick()
+        #expect(rig.state == .away)
+        // A video or a call that starts while nobody touches anything doesn't count.
+        rig.probe.displayHeldAwake = true
+        rig.probe.inCall = true
+        rig.probe.idle = 180
+        rig.tick()
+        #expect(rig.state == .away)
+        rig.probe.idle = 0
+        rig.tick()
+        #expect(rig.state == .working)
+    }
+}
+
+@MainActor
+struct PresenceChecks {
+    @Test func followsInputSleepAndLocks() {
+        var rig = Rig()
+        rig.probe.idle = 5
+        rig.tick()
+        #expect(rig.timer.presence == .here(secondsAgo: 5))
+        rig.tick(3600)
+        #expect(rig.timer.presence == .away(seconds: 3600))
+        rig.probe.isScreenLocked = true
+        rig.tick()
+        #expect(rig.timer.presence == .away(seconds: 5))
+    }
+
+    @Test func aVideoOrACallKeepsYouHereWithoutInput() {
+        var rig = Rig()
+        rig.probe.idle = 120
+        rig.probe.displayHeldAwake = true
+        rig.tick()
+        #expect(rig.timer.presence == .here(secondsAgo: 0))
+        rig.probe.displayHeldAwake = false
+        rig.probe.inCall = true
+        rig.tick()
+        #expect(rig.timer.presence == .here(secondsAgo: 0))
+    }
+
+    /// The display and call checks cost the live probe system calls, so they
+    /// wait for a while without input and stop once the user is away.
+    @Test func slowChecksRunOnlyAfterAWhileWithoutInput() {
+        var rig = Rig()
+        rig.probe.idle = 119
+        rig.advance(30)
+        #expect(rig.probe.slowChecks == 0)
+        rig.probe.idle = 120
+        rig.tick()
+        #expect(rig.probe.slowChecks == 2)  // the display, then a call
+        rig.advance(30)
+        #expect(rig.state == .away)
+        #expect(rig.probe.slowChecks == 2)
+    }
 }
 
 @MainActor
@@ -490,12 +593,23 @@ final class FakeProbe: ActivityProbe {
     var idle: TimeInterval = 0
     var sinceKeyPress: TimeInterval = 60
     var displayHeldAwake = false
+    var inCall = false
     var isScreenLocked = false
     var busy: String?
+    /// How many times the display or a call was checked, which costs the live
+    /// probe system calls.
+    private(set) var slowChecks = 0
 
     func idleSeconds() -> TimeInterval { idle }
     func secondsSinceKeyPress() -> TimeInterval { sinceKeyPress }
-    func isDisplayHeldAwake() -> Bool { displayHeldAwake }
+    func isDisplayHeldAwake() -> Bool {
+        slowChecks += 1
+        return displayHeldAwake
+    }
+    func isInCall() -> Bool {
+        slowChecks += 1
+        return inCall
+    }
     func busyReason() -> String? { busy }
 }
 

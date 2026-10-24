@@ -98,7 +98,7 @@ final class BreakScheduler: ObservableObject {
         let wallNow = Date()
         core.config = .current
         core.tick(elapsed: elapsed, now: wallNow, probe: probe)
-        activity.recordPresence(now: wallNow, elapsed: elapsed, timer: core, probe: probe)
+        activity.recordPresence(now: wallNow, timer: core)
         sync()
     }
 

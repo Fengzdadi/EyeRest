@@ -27,7 +27,7 @@ public struct MCPServer {
         something 20 feet away for 20 seconds, with a longer stand-up break about every hour. \
         These tools show whether a break is coming up, how long the user has been at the screen \
         today and over recent days, and how they've kept up with breaks. Screen time is time with \
-        recent keyboard or mouse input, or a video playing; it doesn't track which apps are used. \
+        recent keyboard or mouse input, a video playing or a call; it doesn't track which apps are used. \
         All data stays on this Mac.
         """
 

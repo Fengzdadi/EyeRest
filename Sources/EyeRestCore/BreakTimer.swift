@@ -9,6 +9,8 @@ public protocol ActivityProbe {
     func secondsSinceKeyPress() -> TimeInterval
     /// Some app (usually a video player) is keeping the display awake.
     func isDisplayHeldAwake() -> Bool
+    /// A call is in progress: the camera or microphone is in use.
+    func isInCall() -> Bool
     var isScreenLocked: Bool { get }
     /// Why a due break should wait (a call, a slideshow, a meeting), or nil.
     func busyReason() -> String?
@@ -70,6 +72,17 @@ public struct BreakTimer {
         case resumed
     }
 
+    /// Whether the user is at the screen, worked out once a tick for both the
+    /// timer and the screen time log.
+    public enum Presence: Equatable, Sendable {
+        /// At the screen, last seen this many seconds ago: at the last input,
+        /// or now while a video or a call keeps them there.
+        case here(secondsAgo: TimeInterval)
+        /// Away this long: no input with nothing keeping them at the screen,
+        /// the screen locked, or the Mac asleep.
+        case away(seconds: TimeInterval)
+    }
+
     public var config: Config
     public private(set) var state: State = .working
     /// Seconds until the next break, or until the current break ends.
@@ -81,6 +94,8 @@ public struct BreakTimer {
     /// Breaks taken since the last long one (or since the user was away for
     /// at least a long break's length).
     public private(set) var breaksSinceLong = 0
+    /// Whether the user was at the screen on the last tick.
+    public private(set) var presence = Presence.here(secondsAgo: 0)
 
     /// Whether the next break will be a long one.
     public var nextBreakIsLong: Bool {
@@ -119,6 +134,7 @@ public struct BreakTimer {
         // A monotonic source never goes backwards; guard anyway.
         let elapsed = max(0, elapsed)
         clock += elapsed
+        presence = checkPresence(gap: elapsed, probe: probe)
 
         switch state {
         case .paused(let until):
@@ -137,12 +153,12 @@ public struct BreakTimer {
             }
 
         case .working, .waiting, .waitingForTyping, .away:
-            if isAway(gap: elapsed, probe: probe) {
+            if case .away(let seconds) = presence {
                 state = .away
                 remaining = config.workSeconds
                 dueSince = nil
                 // Away for as long as a long break counts as one.
-                if max(elapsed, probe.idleSeconds()) >= config.longBreakSeconds {
+                if seconds >= config.longBreakSeconds {
                     breaksSinceLong = 0
                 }
             } else {
@@ -212,13 +228,17 @@ public struct BreakTimer {
 
     // MARK: Helpers
 
-    /// The user is taking a natural break if the screen is locked, the Mac just
-    /// woke from sleep (a gap longer than a break), or there has been no input
-    /// for a while and no video is keeping the display awake.
-    private func isAway(gap: TimeInterval, probe: ActivityProbe) -> Bool {
-        if probe.isScreenLocked || gap > config.breakSeconds { return true }
-        let idleLimit = max(config.idleResetSeconds, config.breakSeconds)
-        return probe.idleSeconds() >= idleLimit && !probe.isDisplayHeldAwake()
+    /// The user is away, taking a natural break, if the screen is locked, the
+    /// Mac just woke from sleep (a gap longer than a break), or there has been
+    /// no input for a while. Without input they still count as here while a
+    /// video or a call keeps them at the screen. Once away, only input brings
+    /// them back, so a long absence costs no slow checks.
+    private func checkPresence(gap: TimeInterval, probe: ActivityProbe) -> Presence {
+        let idle = probe.idleSeconds()
+        if probe.isScreenLocked || gap > config.breakSeconds { return .away(seconds: max(gap, idle)) }
+        if idle < max(config.idleResetSeconds, config.breakSeconds) { return .here(secondsAgo: idle) }
+        if case .here = presence, probe.isDisplayHeldAwake() || probe.isInCall() { return .here(secondsAgo: 0) }
+        return .away(seconds: idle)
     }
 
     /// A due break waits for a pause in typing, but no longer than

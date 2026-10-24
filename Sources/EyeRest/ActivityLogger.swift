@@ -20,12 +20,10 @@ final class ActivityLogger {
         }
     }
 
-    /// Records whether the user is at the screen, once a tick.
-    func recordPresence(now: Date, elapsed: TimeInterval, timer: BreakTimer, probe: ActivityProbe) {
-        let lastSeen = ScreenTimeRecorder.lastSeen(
-            now: now, probe: probe, onBreak: timer.state == .onBreak, elapsed: elapsed,
-            idleLimit: max(timer.config.idleResetSeconds, timer.config.breakSeconds),
-            sleepGap: timer.config.breakSeconds)
+    /// Records whether the user is at the screen, once a tick, from what the
+    /// timer worked out on that tick.
+    func recordPresence(now: Date, timer: BreakTimer) {
+        let lastSeen = ScreenTimeRecorder.lastSeen(now: now, presence: timer.presence, onBreak: timer.state == .onBreak)
         if let record = recorder.record(now: now, lastSeen: lastSeen) {
             write([record])
         }

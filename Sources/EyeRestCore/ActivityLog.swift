@@ -56,16 +56,10 @@ public struct ScreenTimeRecorder: Sendable {
     }
 
     /// When the user was last known to be at the screen, or nil if they don't
-    /// count as there now: on a break, the screen locked, the Mac just back
-    /// from sleep (a tick gap over `sleepGap`), or no input for `idleLimit`.
-    /// A video keeping the display awake counts as being there.
-    @MainActor
-    public static func lastSeen(now: Date, probe: ActivityProbe, onBreak: Bool, elapsed: TimeInterval,
-                                idleLimit: TimeInterval, sleepGap: TimeInterval) -> Date? {
-        guard !onBreak, !probe.isScreenLocked, elapsed <= sleepGap else { return nil }
-        if probe.isDisplayHeldAwake() { return now }
-        let idle = probe.idleSeconds()
-        return idle < idleLimit ? now.addingTimeInterval(-idle) : nil
+    /// count as there now: on a break, or away (see `BreakTimer.Presence`).
+    public static func lastSeen(now: Date, presence: BreakTimer.Presence, onBreak: Bool) -> Date? {
+        guard !onBreak, case .here(let secondsAgo) = presence else { return nil }
+        return now.addingTimeInterval(-secondsAgo)
     }
 
     /// Records one check at `now`; `lastSeen` is nil when the user isn't there.

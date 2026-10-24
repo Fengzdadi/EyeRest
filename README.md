@@ -21,7 +21,8 @@ something 20 feet (about 6 m) away for 20 seconds.
   you type, your keys keep going to your app until you pause.
 - **Knows when you're away.** No input for 2 minutes, a locked screen or a
   sleeping Mac counts as a natural break and restarts the timer. Watching a
-  video (an app keeping the display awake) doesn't count as away.
+  video (an app keeping the display awake) or sitting through a call without
+  touching the keyboard doesn't count as away.
 - **Doesn't interrupt you when you're busy.** A due break waits while:
   - the camera or microphone is in use (a call),
   - Keynote or PowerPoint is showing a slideshow,
@@ -85,8 +86,8 @@ Or to Claude Desktop, in `~/Library/Application Support/Claude/claude_desktop_co
 | `get_history` | The same, one entry per day, for the last `days` days (default 7, at most 90) |
 
 **What's recorded.** Time at the screen counts while there's recent keyboard
-or mouse input or a video playing, not which apps you use. Break events and
-time at the screen go to `~/Library/Application Support/EyeRest/activity.jsonl`
+or mouse input, a video playing or a call, not which apps you use. Break
+events and time at the screen go to `~/Library/Application Support/EyeRest/activity.jsonl`
 (kept for 90 days), and the current state to `status.json` next to it.
 Nothing leaves your Mac unless an agent reads it: what an agent reads becomes
 part of its conversation with its model.
@@ -127,7 +128,9 @@ To change one permanently: `defaults write io.github.fengzdadi.EyeRest idleReset
 
 - **Call:** any app recording from the microphone, or any camera running.
   Some apps stop the mic when you mute, so a muted call with the camera off may
-  not count; turn on calendar meetings to cover those.
+  not count; turn on calendar meetings to cover those. While calls hold
+  breaks, a call also keeps you at the screen: listening without touching the
+  keyboard or mouse isn't taken for being away.
 - **Slideshow:** a Keynote or PowerPoint window covering a whole display.
   Editing a deck in native full screen looks the same, so it counts too.
 - **Calendar meeting:** a timed event happening now that you haven't declined,
@@ -149,9 +152,10 @@ calls. It reads the Mac's state through an `ActivityProbe`, so the tests in
 
 | File | Role |
 |---|---|
-| `EyeRestCore/BreakTimer.swift` | The state machine: working, away, waiting while busy, waiting for a typing pause, on a break, paused |
+| `EyeRestCore/BreakTimer.swift` | The state machine (working, away, waiting while busy, waiting for a typing pause, on a break, paused) and whether you're at the screen |
 | `BreakScheduler.swift` | Ticks the timer once a second and mirrors it into the break screen, heads-up and menu |
-| `LiveProbe.swift` | The real `ActivityProbe`: idle time, screen lock, and the "Hold Breaks During" checks |
+| `LiveProbe.swift` | The real `ActivityProbe`: idle time, screen lock, and the "Hold Breaks During" checks, the slow ones reused for 5 seconds |
+| `EyeRestCore/CachedCheck.swift` | Keeps a slow check's answer for a few seconds |
 | `Activity.swift` | Idle time (`CGEventSource`), camera use (CoreMediaIO), microphone use per process (Core Audio), display-sleep assertions (IOKit), slideshow windows (`CGWindowList`) |
 | `MeetingCalendar.swift` | Current calendar meeting (EventKit) |
 | `HeadsUp.swift` | The countdown pill before a break; a panel that never becomes key |

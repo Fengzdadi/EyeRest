@@ -57,24 +57,13 @@ struct Recorder {
         #expect(recorder.close() == nil)
     }
 
-    @MainActor
-    @Test func lastSeenFollowsInputBreaksLocksAndSleep() {
-        let probe = FakeProbe()
+    /// The timer decides what counts as being there; see `PresenceChecks`.
+    @Test func lastSeenFollowsPresenceAndBreaks() {
         let now = at(100)
-        func seen(onBreak: Bool = false, elapsed: TimeInterval = 1) -> Date? {
-            ScreenTimeRecorder.lastSeen(now: now, probe: probe, onBreak: onBreak, elapsed: elapsed,
-                                        idleLimit: 120, sleepGap: 20)
-        }
-        probe.idle = 5
-        #expect(seen() == at(95))
-        #expect(seen(onBreak: true) == nil)
-        #expect(seen(elapsed: 3600) == nil)
-        probe.idle = 120
-        #expect(seen() == nil)
-        probe.displayHeldAwake = true
-        #expect(seen() == now)
-        probe.isScreenLocked = true
-        #expect(seen() == nil)
+        #expect(ScreenTimeRecorder.lastSeen(now: now, presence: .here(secondsAgo: 5), onBreak: false) == at(95))
+        #expect(ScreenTimeRecorder.lastSeen(now: now, presence: .here(secondsAgo: 0), onBreak: false) == now)
+        #expect(ScreenTimeRecorder.lastSeen(now: now, presence: .here(secondsAgo: 5), onBreak: true) == nil)
+        #expect(ScreenTimeRecorder.lastSeen(now: now, presence: .away(seconds: 300), onBreak: false) == nil)
     }
 }
 

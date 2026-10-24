@@ -7,6 +7,11 @@ import EyeRestCore
 final class LiveProbe: ActivityProbe {
     private let calendar: MeetingCalendar
     private(set) var isScreenLocked = false
+    /// The call and slideshow checks are slow (the microphone check asks Core
+    /// Audio about every process that has used audio) and a due break asks
+    /// every second, so their answers are reused for a few seconds.
+    private var calls = CachedCheck<String?>(lifetime: .seconds(5))
+    private var slideshows = CachedCheck<String?>(lifetime: .seconds(5))
 
     init(calendar: MeetingCalendar) {
         self.calendar = calendar
@@ -23,11 +28,17 @@ final class LiveProbe: ActivityProbe {
     func secondsSinceKeyPress() -> TimeInterval { Activity.secondsSinceKeyPress() }
     func isDisplayHeldAwake() -> Bool { Activity.isDisplayHeldAwake() }
 
+    /// Only while calls hold breaks, so turning that off (say, for an app that
+    /// keeps the microphone open) also stops a call keeping you at the screen.
+    func isInCall() -> Bool {
+        Settings.holdDuringCalls && callReason() != nil
+    }
+
     func busyReason() -> String? {
-        if Settings.holdDuringCalls, let reason = Activity.callInProgress() {
+        if Settings.holdDuringCalls, let reason = callReason() {
             return reason
         }
-        if Settings.holdDuringSlideshows, let app = Activity.slideshowApp() {
+        if Settings.holdDuringSlideshows, let app = slideshowApp() {
             return String(localized: "\(app) slideshow")
         }
         if Settings.holdDuringMeetings, let title = calendar.currentMeeting() {
@@ -36,4 +47,7 @@ final class LiveProbe: ActivityProbe {
         }
         return nil
     }
+
+    private func callReason() -> String? { calls.value { Activity.callInProgress() } }
+    private func slideshowApp() -> String? { slideshows.value { Activity.slideshowApp() } }
 }
