@@ -116,6 +116,27 @@ struct Summaries {
     }
 }
 
+struct Compaction {
+    @Test func aStretchsChunksBecomeOneRecord() {
+        #expect(ActivityRecord.mergingChunks([active(0, 60), active(60, 120), active(120, 150)]) == [active(0, 150)])
+    }
+
+    @Test func separateStretchesStaySeparate() {
+        let records = [active(0, 60), active(80, 140)]  // a 20 s break between them
+        #expect(ActivityRecord.mergingChunks(records) == records)
+    }
+
+    @Test func anEventDuringAStretchDoesNotSplitIt() {
+        let postponed = ActivityRecord(kind: .breakPostponed, start: at(70))
+        #expect(ActivityRecord.mergingChunks([active(0, 60), postponed, active(60, 120)]) == [active(0, 120), postponed])
+    }
+
+    @Test func mergingTwiceChangesNothing() {
+        let once = ActivityRecord.mergingChunks(eveningAtTheScreen())
+        #expect(ActivityRecord.mergingChunks(once) == once)
+    }
+}
+
 struct Store {
     private func makeStore() -> ActivityStore {
         ActivityStore(directory: FileManager.default.temporaryDirectory
@@ -142,12 +163,31 @@ struct Store {
         #expect(store.records() == [active(0, 60)])
     }
 
-    @Test func pruningDropsOldRecords() throws {
+    @Test func compactingDropsOldRecords() throws {
         let store = makeStore()
         defer { try? FileManager.default.removeItem(at: store.directory) }
         try store.append([active(-100 * 86_400, -100 * 86_400 + 60), active(0, 60)])
-        try store.prune(keepingDays: 90, now: at(0))
+        try store.compact(keepingDays: 90, now: at(0))
         #expect(store.records() == [active(0, 60)])
+    }
+
+    /// Merging chunks must not change what the log says, after the file's
+    /// round trip to whole seconds.
+    @Test func compactingKeepsWhatTheSummariesSay() throws {
+        let store = makeStore()
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        try store.append(eveningAtTheScreen())
+        let before = store.records()
+        try store.compact(keepingDays: 90, now: at(0))
+        let after = store.records()
+
+        let stretches = after.filter { $0.kind == .active }
+        #expect(zip(stretches, stretches.dropFirst()).allSatisfy { $0.end != $1.start })  // a record per stretch
+        #expect(after.count < before.count / 4)
+        #expect(after.filter { $0.kind != .active } == before.filter { $0.kind != .active })
+        let midnight = at(-8 * 3600)
+        #expect(DaySummary.summaries(of: after, days: 2, now: midnight, calendar: utc)
+            == DaySummary.summaries(of: before, days: 2, now: midnight, calendar: utc))
     }
 
     @Test func statusRoundTrips() throws {
@@ -159,4 +199,38 @@ struct Store {
         try store.writeStatus(status)
         #expect(store.status() == status)
     }
+}
+
+struct Daily {
+    @Test func dueOnceEachCalendarDay() {
+        var chore = OncePerDay()
+        // 08:00 (the first ask), 09:00, 23:59:59, midnight, 01:00.
+        let asks = [at(0), at(3600), at(16 * 3600 - 1), at(16 * 3600), at(17 * 3600)]
+            .map { chore.isDue(now: $0, calendar: utc) }
+        #expect(asks == [true, false, false, true, false])
+    }
+}
+
+// MARK: - Test data
+
+/// Four hours at the screen from 22:00 UTC the day before `t0`, logged the way
+/// the recorder does: 20-minute stretches between 20 s breaks, a postponed
+/// heads-up during one, a walk away, and work past midnight. Ticks fall
+/// between whole seconds, as real ones do.
+private func eveningAtTheScreen() -> [ActivityRecord] {
+    var recorder = ScreenTimeRecorder()
+    var log: [ActivityRecord] = []
+    for second in 0..<4 * 3600 {
+        let now = at(TimeInterval(second - 10 * 3600) + 0.4)
+        let cycle = second % 1220
+        if cycle == 1200 { log.append(ActivityRecord(kind: .breakStarted, start: now, long: false)) }
+        if cycle == 0, second > 0 { log.append(ActivityRecord(kind: .breakFinished, start: now, long: false)) }
+        if second == 1190 { log.append(ActivityRecord(kind: .breakPostponed, start: now)) }
+        let away = (5400..<6000).contains(second)
+        if let record = recorder.record(now: now, lastSeen: away || cycle >= 1200 ? nil : now) {
+            log.append(record)
+        }
+    }
+    if let record = recorder.close() { log.append(record) }
+    return log
 }

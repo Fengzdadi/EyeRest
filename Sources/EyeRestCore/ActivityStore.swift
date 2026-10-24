@@ -83,12 +83,7 @@ public struct ActivityStore: Sendable {
     public func append(_ records: [ActivityRecord]) throws {
         guard !records.isEmpty else { return }
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let encoder = Self.encoder()
-        var data = Data()
-        for record in records {
-            data.append(try encoder.encode(record))
-            data.append(0x0A)
-        }
+        let data = try Self.lines(records)
         if let handle = try? FileHandle(forWritingTo: activityURL) {
             defer { try? handle.close() }
             try handle.seekToEnd()
@@ -106,19 +101,26 @@ public struct ActivityStore: Sendable {
         return data.split(separator: 0x0A).compactMap { try? decoder.decode(ActivityRecord.self, from: Data($0)) }
     }
 
-    /// Drops records older than `days` days before `now`.
-    public func prune(keepingDays days: Int, now: Date) throws {
+    /// Drops records older than `days` days before `now` and merges each
+    /// stretch's chunks into one record, rewriting the file only if that
+    /// changes anything. Done daily, it keeps the log small and quick to read.
+    public func compact(keepingDays days: Int, now: Date) throws {
         let cutoff = now.addingTimeInterval(-TimeInterval(days) * 86_400)
         let all = records()
-        let kept = all.filter { ($0.end ?? $0.start) >= cutoff }
+        let kept = ActivityRecord.mergingChunks(all.filter { ($0.end ?? $0.start) >= cutoff })
         guard kept.count < all.count else { return }
+        try Self.lines(kept).write(to: activityURL, options: .atomic)
+    }
+
+    /// The records as JSON, one per line.
+    private static func lines(_ records: [ActivityRecord]) throws -> Data {
         let encoder = Self.encoder()
         var data = Data()
-        for record in kept {
+        for record in records {
             data.append(try encoder.encode(record))
             data.append(0x0A)
         }
-        try data.write(to: activityURL, options: .atomic)
+        return data
     }
 
     // MARK: Status

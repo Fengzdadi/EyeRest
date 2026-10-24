@@ -88,7 +88,8 @@ Or to Claude Desktop, in `~/Library/Application Support/Claude/claude_desktop_co
 **What's recorded.** Time at the screen counts while there's recent keyboard
 or mouse input, a video playing or a call, not which apps you use. Break
 events and time at the screen go to `~/Library/Application Support/EyeRest/activity.jsonl`
-(kept for 90 days), and the current state to `status.json` next to it.
+(kept for 90 days, and compacted once a day so each stretch at the screen is
+one line), and the current state to `status.json` next to it.
 Nothing leaves your Mac unless an agent reads it: what an agent reads becomes
 part of its conversation with its model.
 
@@ -164,6 +165,7 @@ calls. It reads the Mac's state through an `ActivityProbe`, so the tests in
 | `StatusMenu.swift` | Menu bar icon, countdown and menu |
 | `ActivityLogger.swift` | Writes the activity log and status file the MCP server reads |
 | `EyeRestCore/ActivityLog.swift`, `DaySummary.swift`, `ActivityStore.swift` | Activity records, time at the screen, daily summaries, and the files they live in |
+| `EyeRestCore/OncePerDay.swift` | When the daily compaction of the activity log is due |
 | `EyeRestMCP/MCPServer.swift` | The MCP server: JSON-RPC over stdio, three read-only tools |
 | `PanelSupport.swift` | Screen-under-mouse lookup and fade animations shared by the panels |
 | `Resources/*.lproj` | Translations; the keys are the English text in the code |

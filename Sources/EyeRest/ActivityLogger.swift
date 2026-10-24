@@ -9,16 +9,10 @@ private let log = Logger(subsystem: "io.github.fengzdadi.EyeRest", category: "ac
 final class ActivityLogger {
     private let store = ActivityStore()
     private var recorder = ScreenTimeRecorder()
+    /// The log is compacted on the first tick, then on the first of each day.
+    private var compaction = OncePerDay()
     /// What the status file says now, minus timestamps that move every second.
     private var statusKey = ""
-
-    init() {
-        do {
-            try store.prune(keepingDays: 90, now: Date())
-        } catch {
-            log.error("can't prune the activity log: \(error.localizedDescription, privacy: .public)")
-        }
-    }
 
     /// Records whether the user is at the screen, once a tick, from what the
     /// timer worked out on that tick.
@@ -26,6 +20,18 @@ final class ActivityLogger {
         let lastSeen = ScreenTimeRecorder.lastSeen(now: now, presence: timer.presence, onBreak: timer.state == .onBreak)
         if let record = recorder.record(now: now, lastSeen: lastSeen) {
             write([record])
+        }
+        if compaction.isDue(now: now) {
+            compact(now: now)
+        }
+    }
+
+    /// Drops records older than 90 days and merges each stretch's chunks.
+    private func compact(now: Date) {
+        do {
+            try store.compact(keepingDays: 90, now: now)
+        } catch {
+            log.error("can't compact the activity log: \(error.localizedDescription, privacy: .public)")
         }
     }
 

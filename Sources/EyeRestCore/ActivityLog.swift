@@ -40,11 +40,30 @@ public struct ActivityRecord: Codable, Equatable, Sendable {
         case .resumed: self.init(kind: .resumed, start: time)
         }
     }
+
+    /// `records` with each stretch's chunks, which meet end to start, merged
+    /// into one `active` record, even across events logged during the stretch.
+    /// Time at the screen and stretches come out the same; the log just
+    /// shrinks to about a line per stretch.
+    public static func mergingChunks(_ records: [ActivityRecord]) -> [ActivityRecord] {
+        var merged: [ActivityRecord] = []
+        var lastActive: Int?
+        for record in records {
+            if record.kind == .active, let index = lastActive, merged[index].end == record.start {
+                merged[index].end = record.end
+            } else {
+                if record.kind == .active { lastActive = merged.count }
+                merged.append(record)
+            }
+        }
+        return merged
+    }
 }
 
 /// Turns once-a-second "is the user at the screen?" checks into `active`
 /// records. A long stretch is written in chunks of `chunkSeconds`, so little is
-/// lost if the app quits unexpectedly; chunks of one stretch meet end to start.
+/// lost if the app quits unexpectedly; chunks of one stretch meet end to start,
+/// and `ActivityStore.compact` later merges them.
 public struct ScreenTimeRecorder: Sendable {
     public var chunkSeconds: TimeInterval
     private var start: Date?
