@@ -6,6 +6,7 @@ import ServiceManagement
 @MainActor
 final class StatusMenu: NSObject, NSMenuDelegate {
     private let scheduler: BreakScheduler
+    private let store = ActivityStore()
     private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let menu = NSMenu()
     private let statusLine = NSMenuItem(title: "", action: nil, keyEquivalent: "")
@@ -66,6 +67,13 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         menu.removeAllItems()
         statusLine.title = statusText()
         menu.addItem(statusLine)
+        let now = Date()
+        let days = recentDays(now: now)
+        let today = days[0]
+        let time = duration(today.screenSeconds)
+        menu.addItem(withTitle: String(localized: "Today: \(time) at the screen · Breaks taken: \(today.breaksFinished) · Skipped: \(today.breaksSkipped)"),
+                     action: nil, keyEquivalent: "")
+        menu.addItem(historyMenu(days, now: now))
         menu.addItem(.separator())
 
         if case .paused = scheduler.state {
@@ -125,6 +133,72 @@ final class StatusMenu: NSObject, NSMenuDelegate {
             let time = until.formatted(date: .omitted, time: .shortened)
             return String(localized: "Paused until \(time)")
         }
+    }
+
+    // MARK: Screen time
+
+    /// Summaries of the days in the activity log, at most the last week,
+    /// newest first. Reading the log as the menu opens is quick: it's
+    /// compacted daily, so even 90 days is a few thousand lines.
+    private func recentDays(now: Date) -> [DaySummary] {
+        let records = store.records()
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: now)
+        // Days before the log starts would look like days off.
+        let firstDay = records.map(\.start).min().map { calendar.startOfDay(for: $0) } ?? today
+        let tracked = (calendar.dateComponents([.day], from: firstDay, to: today).day ?? 0) + 1
+        return DaySummary.summaries(of: records, days: min(7, tracked), now: now).reversed()
+    }
+
+    /// "Last 7 Days" submenu: a line a day, lined up in columns.
+    private func historyMenu(_ days: [DaySummary], now: Date) -> NSMenuItem {
+        let parent = NSMenuItem(title: String(localized: "Last 7 Days"), action: nil, keyEquivalent: "")
+        parent.submenu = NSMenu()
+        let rows = days.enumerated().map { back, day in
+            [dayName(back, before: now), duration(day.screenSeconds),
+             String(localized: "\(day.breaksFinished) taken"), String(localized: "\(day.breaksSkipped) skipped")]
+        }
+        for line in columns(rows) {
+            let item = NSMenuItem(title: line.string, action: nil, keyEquivalent: "")
+            item.attributedTitle = line
+            parent.submenu?.addItem(item)
+        }
+        return parent
+    }
+
+    /// "Today", "Yesterday", then "Mon, Nov 2", for the day `back` days before `now`.
+    private func dayName(_ back: Int, before now: Date) -> String {
+        switch back {
+        case 0: return String(localized: "Today")
+        case 1: return String(localized: "Yesterday")
+        default:
+            let calendar = Calendar.current
+            let day = calendar.date(byAdding: .day, value: -back, to: calendar.startOfDay(for: now))!
+            return day.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
+        }
+    }
+
+    /// Each row as one line, its cells separated by tabs, with a tab stop
+    /// just past the widest cell of each column.
+    private func columns(_ rows: [[String]]) -> [NSAttributedString] {
+        let font = NSFont.monospacedDigitSystemFont(ofSize: NSFont.menuFont(ofSize: 0).pointSize, weight: .regular)
+        let gap: CGFloat = 16
+        var stops: [NSTextTab] = []
+        var x: CGFloat = 0
+        for column in 0..<rows[0].count - 1 {
+            x += rows.map { ($0[column] as NSString).size(withAttributes: [.font: font]).width }.max()! + gap
+            stops.append(NSTextTab(textAlignment: .left, location: x))
+        }
+        let style = NSMutableParagraphStyle()
+        style.tabStops = stops
+        return rows.map {
+            NSAttributedString(string: $0.joined(separator: "\t"), attributes: [.font: font, .paragraphStyle: style])
+        }
+    }
+
+    /// "41m", "6h 2m"; "6小时2分钟" in Chinese.
+    private func duration(_ seconds: TimeInterval) -> String {
+        Duration.seconds(seconds).formatted(.units(allowed: [.hours, .minutes], width: .narrow, fractionalPart: .hide(rounded: .down)))
     }
 
     // MARK: Actions

@@ -11,6 +11,14 @@
 "Paused" = "已暂停";
 "Paused until %@" = "暂停至 %@";
 
+/* Menu: screen time */
+"Today: %@ at the screen · Breaks taken: %lld · Skipped: %lld" = "今天：屏幕前 %@ · 休息 %lld 次 · 跳过 %lld 次";
+"Last 7 Days" = "最近 7 天";
+"Today" = "今天";
+"Yesterday" = "昨天";
+"%lld taken" = "休息 %lld 次";
+"%lld skipped" = "跳过 %lld 次";
+
 /* Why a break is waiting */
 "camera in use" = "摄像头使用中";
 "microphone in use" = "麦克风使用中";
