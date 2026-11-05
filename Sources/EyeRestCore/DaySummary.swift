@@ -13,9 +13,20 @@ public struct DaySummary: Codable, Equatable, Sendable {
     public var longBreaksFinished = 0
     public var breaksSkipped = 0
     public var breaksPostponed = 0
+    /// Time at the screen in each app, by bundle identifier, when apps are
+    /// recorded.
+    public var apps: [String: TimeInterval] = [:]
 
     public init(date: String) {
         self.date = date
+    }
+
+    /// The apps used at least a minute, most used first, at most `limit`.
+    public func mostUsedApps(limit: Int) -> [(bundleID: String, seconds: TimeInterval)] {
+        apps.filter { $0.value >= 60 }
+            .sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }
+            .prefix(limit)
+            .map { ($0.key, $0.value) }
     }
 
     /// Summaries for the `days` calendar days ending with the day of `now`,
@@ -72,6 +83,11 @@ public struct DaySummary: Codable, Equatable, Sendable {
 
         for record in records where record.start >= dayStart && record.start < dayEnd {
             switch record.kind {
+            case .active:
+                // A record holds chunks that start on one day (see
+                // `mergingChunks`), so its apps count for that day, give or
+                // take the chunk that runs past midnight.
+                day.apps.merge(record.apps ?? [:], uniquingKeysWith: +)
             case .breakFinished:
                 day.breaksFinished += 1
                 if record.long == true { day.longBreaksFinished += 1 }

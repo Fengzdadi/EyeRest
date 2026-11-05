@@ -23,6 +23,10 @@
 "Breaks" = "休息";
 "Finished" = "完成";
 "Skipped" = "跳过";
+"Most used apps" = "最常用的应用";
+"No apps recorded" = "没有记录到应用";
+"Record Apps Used" = "记录使用的应用";
+"Which app is in front while you're at the screen, to show the apps you use most. Never window titles, documents or websites." = "记录你在屏幕前时哪个应用在最前面，用来显示最常用的应用。不会记录窗口标题、文档或网址。";
 
 /* Why a break is waiting */
 "camera in use" = "摄像头使用中";

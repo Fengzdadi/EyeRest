@@ -44,10 +44,12 @@ final class ActivityLogger {
     }
 
     /// Records whether the user is at the screen, once a tick, from what the
-    /// timer worked out on that tick.
+    /// timer worked out on that tick, and which app is in front if apps are
+    /// recorded.
     func recordPresence(now: Date, timer: BreakTimer) {
         let lastSeen = ScreenTimeRecorder.lastSeen(now: now, presence: timer.presence, onBreak: timer.state == .onBreak)
-        if let record = recorder.record(now: now, lastSeen: lastSeen) {
+        let app = Settings.recordApps ? Activity.frontmostApp() : nil
+        if let record = recorder.record(now: now, lastSeen: lastSeen, app: app) {
             write([record])
         }
         if compaction.isDue(now: now) {

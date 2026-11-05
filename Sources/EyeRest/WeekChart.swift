@@ -1,8 +1,10 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// The "Last 7 Days" chart: time at the screen and breaks for each day, under
-/// the numbers for the day under the pointer, or today's.
+/// the numbers for the day under the pointer, or today's, and over the apps
+/// used most that day if apps are recorded.
 struct WeekChart: View {
     /// One day's totals.
     struct Day: Equatable {
@@ -11,15 +13,19 @@ struct WeekChart: View {
         var screenSeconds: TimeInterval
         var breaksFinished: Int
         var breaksSkipped: Int
+        /// The apps used most, most first, if apps were recorded.
+        var apps: [App] = []
+
+        /// An app's time at the screen that day.
+        struct App: Equatable {
+            var bundleID: String
+            var seconds: TimeInterval
+        }
 
         /// "41m", "6h 2m"; "6小时2分钟" in Chinese.
-        var screenTime: String { Self.format(screenSeconds, width: .narrow) }
+        var screenTime: String { WeekChart.duration(screenSeconds) }
         /// "6 hours, 2 minutes", for VoiceOver, which may read "2m" as 2 metres.
-        var spokenScreenTime: String { Self.format(screenSeconds, width: .wide) }
-
-        private static func format(_ seconds: TimeInterval, width: Duration.UnitsFormatStyle.UnitWidth) -> String {
-            Duration.seconds(seconds).formatted(.units(allowed: [.hours, .minutes], width: width, fractionalPart: .hide(rounded: .down)))
-        }
+        var spokenScreenTime: String { WeekChart.duration(screenSeconds, width: .wide) }
     }
 
     /// What the chart shows. The menu updates it every second while it's open.
@@ -29,6 +35,8 @@ struct WeekChart: View {
         @Published var days: [Day] = []
         /// Index in `days` of the day under the pointer.
         @Published var pointed: Int?
+        /// Whether the apps used most show under the plots.
+        @Published var showsApps = false
 
         /// Points at the day under `x`, in the chart's coordinates, or at none.
         func point(atX x: CGFloat?) {
@@ -48,6 +56,22 @@ struct WeekChart: View {
     private static var slotWidth: CGFloat { (width - 2 * inset - gutter) / CGFloat(slots) }
     private static let screenHeight: CGFloat = 84
     private static let breaksHeight: CGFloat = 56
+    private static let padding: CGFloat = 10
+    private static let readoutHeight: CGFloat = 34
+    /// How many apps a day shows.
+    static let appRows = 5
+    private static let appRowHeight: CGFloat = 20
+    /// The apps used most, from the gap above them to the last row's bottom.
+    private static let appsHeight: CGFloat = 152
+    private static let appNameWidth: CGFloat = 96
+    /// Room for an app's bar and the time at its tip: what the icon and the
+    /// name leave.
+    private static var barRoom: CGFloat { width - 2 * inset - (16 + 6) - (appNameWidth + 8) }
+
+    /// How far the plots are from the top, and from the bottom, which is
+    /// where the pointer picks a day.
+    static let plotsTop = padding + readoutHeight
+    static func plotsBottom(showsApps: Bool) -> CGFloat { padding + (showsApps ? appsHeight : 0) }
 
     @ObservedObject var model: Model
     @Environment(\.colorScheme) private var colorScheme
@@ -95,10 +119,13 @@ struct WeekChart: View {
             }
             dayLabels
                 .padding(.top, 5)
+            if model.showsApps {
+                mostUsed
+            }
         }
         .monospacedDigit()
         .padding(.horizontal, Self.inset)
-        .padding(.vertical, 10)
+        .padding(.vertical, Self.padding)
         .frame(width: Self.width)
     }
 
@@ -116,9 +143,70 @@ struct WeekChart: View {
             }
         }
         .lineLimit(1)
-        .frame(maxWidth: .infinity, minHeight: 34, maxHeight: 34, alignment: .topLeading)
+        .frame(maxWidth: .infinity, minHeight: Self.readoutHeight, maxHeight: Self.readoutHeight, alignment: .topLeading)
         // The day labels say the same to VoiceOver, one day at a time.
         .accessibilityHidden(true)
+    }
+
+    /// The apps used most on the day under the pointer, or today: a bar each
+    /// from one baseline, the longest for the app used most, with the time at
+    /// its tip.
+    private var mostUsed: some View {
+        let index = model.pointed ?? model.days.count - 1
+        let apps = model.days.indices.contains(index) ? model.days[index].apps : []
+        // The longest bar leaves room for the widest time beside it.
+        let widest = apps.map { Self.textWidth(WeekChart.duration($0.seconds)) }.max() ?? 0
+        let longest = Self.barRoom - 6 - widest
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text("Most used apps")
+                    .font(.system(size: 12))
+                Spacer()
+                if model.days.indices.contains(index) {
+                    Text(name(index))
+                        .font(.system(size: 11))
+                }
+            }
+            .foregroundStyle(.secondary)
+            .padding(.bottom, 2)
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.isHeader)
+            if apps.isEmpty {
+                Text("No apps recorded")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .frame(height: Self.appRowHeight)
+            }
+            ForEach(apps, id: \.bundleID) { app in
+                HStack(spacing: 0) {
+                    Image(nsImage: AppInfo.icon(app.bundleID))
+                        .resizable()
+                        .frame(width: 16, height: 16)
+                        .padding(.trailing, 6)
+                    Text(AppInfo.name(app.bundleID))
+                        .font(.system(size: 12))
+                        .lineLimit(1)
+                        .frame(width: Self.appNameWidth, alignment: .leading)
+                        .padding(.trailing, 8)
+                    UnevenRoundedRectangle(bottomTrailingRadius: 4, topTrailingRadius: 4)
+                        .fill(blue)
+                        .frame(width: max(2, longest * app.seconds / apps[0].seconds), height: 8)
+                    Text(WeekChart.duration(app.seconds))
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .fixedSize()
+                        .padding(.leading, 4)
+                    Spacer(minLength: 0)
+                }
+                .frame(height: Self.appRowHeight)
+                .accessibilityElement(children: .ignore)
+                .accessibilityAddTraits(.isStaticText)
+                .accessibilityLabel(AppInfo.name(app.bundleID))
+                .accessibilityValue(WeekChart.duration(app.seconds, width: .wide))
+            }
+        }
+        .padding(.top, 14)
+        .frame(height: Self.appsHeight, alignment: .top)
     }
 
     /// "Mon", "Tue" … "Today" under the slots. They're what VoiceOver reads:
@@ -220,6 +308,19 @@ struct WeekChart: View {
         Duration.seconds(seconds).formatted(.units(allowed: [.hours], width: .narrow))
     }
 
+    /// Hours and minutes, rounded down: "41m", "6h 2m", or with `.wide`
+    /// "6 hours, 2 minutes".
+    static func duration(_ seconds: TimeInterval, width: Duration.UnitsFormatStyle.UnitWidth = .narrow) -> String {
+        Duration.seconds(seconds).formatted(.units(allowed: [.hours, .minutes], width: width, fractionalPart: .hide(rounded: .down)))
+    }
+
+    /// How wide a time is in its font, which SwiftUI can't say before laying
+    /// it out.
+    private static func textWidth(_ text: String) -> CGFloat {
+        let font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular)
+        return ceil((text as NSString).size(withAttributes: [.font: font]).width)
+    }
+
     /// The day with the most time at the screen, whose bar is labelled.
     private var busiest: Int? {
         model.days.indices.max { model.days[$0].screenSeconds < model.days[$1].screenSeconds }
@@ -292,10 +393,38 @@ final class WeekChartView: NSView {
     }
 
     override func mouseMoved(with event: NSEvent) {
-        model.point(atX: convert(event.locationInWindow, from: nil).x)
+        let location = convert(event.locationInWindow, from: nil)
+        // Only the plots pick a day. Above them, on the readout, and below, on
+        // the apps, the day stays, so the pointer can go there to read it.
+        guard bounds.height - location.y > WeekChart.plotsTop,
+              location.y > WeekChart.plotsBottom(showsApps: model.showsApps) else { return }
+        model.point(atX: location.x)
     }
 
     override func mouseExited(with event: NSEvent) {
         model.point(atX: nil)
+    }
+}
+
+/// Apps' names and icons, by bundle identifier, as Finder shows them; looked
+/// up once each.
+@MainActor
+private enum AppInfo {
+    private static var known: [String: (name: String, icon: NSImage)] = [:]
+
+    static func name(_ bundleID: String) -> String { info(bundleID).name }
+    static func icon(_ bundleID: String) -> NSImage { info(bundleID).icon }
+
+    /// An app that's no longer installed gets its bundle identifier and a
+    /// plain app icon.
+    private static func info(_ bundleID: String) -> (name: String, icon: NSImage) {
+        if let info = known[bundleID] { return info }
+        var info = (name: bundleID, icon: NSWorkspace.shared.icon(for: .applicationBundle))
+        if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) {
+            let name = FileManager.default.displayName(atPath: url.path)
+            info = (name.hasSuffix(".app") ? String(name.dropLast(4)) : name, NSWorkspace.shared.icon(forFile: url.path))
+        }
+        known[bundleID] = info
+        return info
     }
 }

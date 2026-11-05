@@ -10,7 +10,10 @@ private final class Fixture {
     let store = ActivityStore(directory: FileManager.default.temporaryDirectory
         .appendingPathComponent("EyeRestMCPTests-\(UUID().uuidString)"))
     var running = true
-    lazy var server = MCPServer(store: store, version: "test", now: { now }, isRunning: { [unowned self] _ in running })
+    /// The installed apps' names, by bundle identifier.
+    var names: [String: String] = [:]
+    lazy var server = MCPServer(store: store, version: "test", now: { now }, isRunning: { [unowned self] _ in running },
+                                appName: { [unowned self] in names[$0] })
 
     deinit { try? FileManager.default.removeItem(at: store.directory) }
 
@@ -103,6 +106,23 @@ struct Tools {
         #expect(today["longBreaksFinished"] as? Int == 1)
         #expect(today["breaksSkipped"] as? Int == 1)
         #expect(today["trackingSince"] != nil)
+        #expect(today["apps"] == nil)  // not recorded
+    }
+
+    @Test func todayListsTheAppsUsedMost() throws {
+        let fixture = Fixture()
+        fixture.names = ["com.apple.dt.Xcode": "Xcode", "com.apple.Safari": "Safari"]
+        var apps: [String: TimeInterval] = ["com.apple.dt.Xcode": 1500, "com.apple.Safari": 900, "com.example.brief": 30]
+        for n in 1...10 { apps["com.example.app\(n)"] = TimeInterval(60 + n) }
+        try fixture.store.append([
+            ActivityRecord(kind: .active, start: now.addingTimeInterval(-3600), end: now, apps: apps),
+        ])
+        let listed = fixture.call("get_today")["apps"] as! [[String: Any]]
+        // At most 10, each used at least a minute, most used first.
+        #expect(listed.map { $0["name"] as! String } == ["Xcode", "Safari"] + (3...10).reversed().map { "com.example.app\($0)" })
+        #expect(listed[0]["bundleID"] as? String == "com.apple.dt.Xcode")
+        #expect(listed[0]["screenSeconds"] as? Int == 1500)
+        #expect(listed[0]["screenTime"] as? String == "25m")
     }
 
     @Test func todayWithNoLogOmitsTrackingSince() {

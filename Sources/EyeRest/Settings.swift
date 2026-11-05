@@ -25,6 +25,7 @@ enum Settings {
             "holdDuringSlideshows": true,
             "holdDuringMeetings": false,
             "showTimer": true,
+            "recordApps": false,
         ])
     }
 
@@ -126,6 +127,12 @@ enum Settings {
     static var showTimer: Bool {
         get { defaults.bool(forKey: "showTimer") }
         set { defaults.set(newValue, forKey: "showTimer") }
+    }
+
+    /// Record which app is in front while the user is at the screen.
+    static var recordApps: Bool {
+        get { defaults.bool(forKey: "recordApps") }
+        set { defaults.set(newValue, forKey: "recordApps") }
     }
 }
 

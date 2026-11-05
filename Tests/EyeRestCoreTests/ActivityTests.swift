@@ -12,16 +12,17 @@ private var utc: Calendar {
     return calendar
 }
 
-private func active(_ start: TimeInterval, _ end: TimeInterval) -> ActivityRecord {
-    ActivityRecord(kind: .active, start: at(start), end: at(end))
+private func active(_ start: TimeInterval, _ end: TimeInterval, apps: [String: TimeInterval]? = nil) -> ActivityRecord {
+    ActivityRecord(kind: .active, start: at(start), end: at(end), apps: apps)
 }
 
 struct Recorder {
     /// Feeds one check per second from `from` to `to`; `seen(t)` is the
-    /// lastSeen for second t (nil when not at the screen).
+    /// lastSeen for second t (nil when not at the screen), and `app(t)` the
+    /// app in front.
     private func run(_ recorder: inout ScreenTimeRecorder, _ from: Int, _ to: Int,
-                     seen: (Int) -> Date?) -> [ActivityRecord] {
-        (from...to).compactMap { recorder.record(now: at(TimeInterval($0)), lastSeen: seen($0)) }
+                     app: (Int) -> String? = { _ in nil }, seen: (Int) -> Date?) -> [ActivityRecord] {
+        (from...to).compactMap { recorder.record(now: at(TimeInterval($0)), lastSeen: seen($0), app: app($0)) }
     }
 
     @Test func aStretchEndsWhenABreakStarts() {
@@ -64,6 +65,33 @@ struct Recorder {
         #expect(recorder.pending == active(60, 90))
         #expect(recorder.close() == active(60, 90))
         #expect(recorder.pending == nil)
+    }
+
+    @Test func eachAppGetsTheTimeItWasInFront() {
+        var recorder = ScreenTimeRecorder(chunkSeconds: 60)
+        let records = run(&recorder, 0, 90, app: { $0 < 30 ? "editor" : "browser" }) { at(TimeInterval($0)) }
+        #expect(records == [active(0, 60, apps: ["editor": 30, "browser": 30])])
+        #expect(recorder.pending == active(60, 90, apps: ["browser": 30]))
+        #expect(recorder.close() == active(60, 90, apps: ["browser": 30]))
+        // The next stretch starts with no time in any app.
+        _ = run(&recorder, 100, 101, app: { _ in "terminal" }) { at(TimeInterval($0)) }
+        #expect(recorder.pending == active(100, 101, apps: ["terminal": 1]))
+    }
+
+    @Test func aPauseCountsForTheAppItWasSpentIn() {
+        var recorder = ScreenTimeRecorder(chunkSeconds: 60)
+        // Typing in the editor until second 10, reading in it until 40, then
+        // switching to the browser and typing there.
+        let records = run(&recorder, 0, 60, app: { $0 < 40 ? "editor" : "browser" }) { at(TimeInterval($0 < 40 ? min($0, 10) : $0)) }
+        #expect(records == [active(0, 60, apps: ["editor": 40, "browser": 20])])
+    }
+
+    @Test func timeAwayIsNotGivenToTheAppInFront() {
+        var recorder = ScreenTimeRecorder(chunkSeconds: 60)
+        // Typing until second 10, then no input until it counts as away at 130.
+        var records = run(&recorder, 0, 129, app: { _ in "editor" }) { at(TimeInterval(min($0, 10))) }
+        records += run(&recorder, 130, 130) { _ in nil }
+        #expect(records == [active(0, 10, apps: ["editor": 10])])
     }
 
     /// The timer decides what counts as being there; see `PresenceChecks`.
@@ -117,6 +145,18 @@ struct Summaries {
         #expect(summary.longBreaksFinished == 1)
         #expect(summary.breaksSkipped == 1)
         #expect(summary.breaksPostponed == 1)
+    }
+
+    @Test func appsCountForTheDayTheirRecordStarts() {
+        let midnight = -8 * 3600.0
+        let records = [
+            active(midnight - 60, midnight, apps: ["editor": 60]),
+            active(midnight, midnight + 60, apps: ["editor": 20, "browser": 40]),
+            active(600, 660, apps: ["browser": 60]),
+            active(700, 760),  // apps not recorded
+        ]
+        #expect(day(records).apps == ["editor": 20, "browser": 100])
+        #expect(day(records, back: 1).apps == ["editor": 60])
     }
 
     @Test func daysComeOldestFirst() {
@@ -178,8 +218,20 @@ struct Compaction {
     }
 
     @Test func mergingTwiceChangesNothing() {
-        let once = ActivityRecord.mergingChunks(eveningAtTheScreen())
-        #expect(ActivityRecord.mergingChunks(once) == once)
+        let once = ActivityRecord.mergingChunks(eveningAtTheScreen(), calendar: utc)
+        #expect(ActivityRecord.mergingChunks(once, calendar: utc) == once)
+    }
+
+    @Test func appsAddUpAsChunksMerge() {
+        let chunks = [active(0, 60, apps: ["editor": 40, "browser": 20]), active(60, 120, apps: ["browser": 60])]
+        #expect(ActivityRecord.mergingChunks(chunks, calendar: utc) == [active(0, 120, apps: ["editor": 40, "browser": 80])])
+    }
+
+    /// So that a record's time in each app belongs to one day.
+    @Test func aStretchOverMidnightBecomesARecordPerDay() {
+        let midnight = -8 * 3600.0
+        let chunks = [active(midnight - 60, midnight), active(midnight, midnight + 60), active(midnight + 60, midnight + 120)]
+        #expect(ActivityRecord.mergingChunks(chunks, calendar: utc) == [active(midnight - 60, midnight), active(midnight, midnight + 120)])
     }
 }
 
@@ -196,6 +248,14 @@ struct Store {
         try store.append(Array(records[..<1]))
         try store.append(Array(records[1...]))
         #expect(store.records() == records)
+    }
+
+    @Test func appSecondsAreWrittenAsWholeNumbers() throws {
+        let store = makeStore()
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        try store.append([active(0, 60, apps: ["com.apple.Safari": 42])])
+        #expect(try String(contentsOf: store.activityURL, encoding: .utf8).contains(#""apps":{"com.apple.Safari":42}"#))
+        #expect(store.records() == [active(0, 60, apps: ["com.apple.Safari": 42])])
     }
 
     @Test func aHalfWrittenLineIsSkipped() throws {
@@ -224,16 +284,18 @@ struct Store {
         defer { try? FileManager.default.removeItem(at: store.directory) }
         try store.append(eveningAtTheScreen())
         let before = store.records()
-        try store.compact(keepingDays: 90, now: at(0))
+        try store.compact(keepingDays: 90, now: at(0), calendar: utc)
         let after = store.records()
 
+        // A record per stretch, and per day for the one past midnight.
         let stretches = after.filter { $0.kind == .active }
-        #expect(zip(stretches, stretches.dropFirst()).allSatisfy { $0.end != $1.start })  // a record per stretch
+        #expect(zip(stretches, stretches.dropFirst()).allSatisfy { $0.end != $1.start || !utc.isDate($0.start, inSameDayAs: $1.start) })
         #expect(after.count < before.count / 4)
         #expect(after.filter { $0.kind != .active } == before.filter { $0.kind != .active })
         let midnight = at(-8 * 3600)
-        #expect(DaySummary.summaries(of: after, days: 2, now: midnight, calendar: utc)
-            == DaySummary.summaries(of: before, days: 2, now: midnight, calendar: utc))
+        let summaries = DaySummary.summaries(of: after, days: 2, now: midnight, calendar: utc)
+        #expect(summaries == DaySummary.summaries(of: before, days: 2, now: midnight, calendar: utc))
+        #expect(summaries.map { $0.apps.keys.sorted() } == [["browser", "editor"], ["browser", "editor"]])
     }
 
     @Test func statusRoundTrips() throws {
@@ -261,8 +323,8 @@ struct Daily {
 
 /// Four hours at the screen from 22:00 UTC the day before `t0`, logged the way
 /// the recorder does: 20-minute stretches between 20 s breaks, a postponed
-/// heads-up during one, a walk away, and work past midnight. Ticks fall
-/// between whole seconds, as real ones do.
+/// heads-up during one, a walk away, and work past midnight, switching apps
+/// every half hour. Ticks fall between whole seconds, as real ones do.
 private func eveningAtTheScreen() -> [ActivityRecord] {
     var recorder = ScreenTimeRecorder()
     var log: [ActivityRecord] = []
@@ -273,7 +335,8 @@ private func eveningAtTheScreen() -> [ActivityRecord] {
         if cycle == 0, second > 0 { log.append(ActivityRecord(kind: .breakFinished, start: now, long: false)) }
         if second == 1190 { log.append(ActivityRecord(kind: .breakPostponed, start: now)) }
         let away = (5400..<6000).contains(second)
-        if let record = recorder.record(now: now, lastSeen: away || cycle >= 1200 ? nil : now) {
+        let app = second / 1800 % 2 == 0 ? "editor" : "browser"
+        if let record = recorder.record(now: now, lastSeen: away || cycle >= 1200 ? nil : now, app: app) {
             log.append(record)
         }
     }

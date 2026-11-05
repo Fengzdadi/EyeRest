@@ -38,7 +38,8 @@ something 20 feet (about 6 m) away for 20 seconds.
 - **Your day at a glance.** The menu shows today's time at the screen and the
   breaks you finished and skipped, with a chart of the last 7 days in a
   submenu; point at a day for its numbers. Stepping away restarts the timer
-  but isn't counted as a break.
+  but isn't counted as a break. Turn on **Record Apps Used** under the chart to
+  see the apps you used most each day too.
 - **An MCP server for AI agents.** Agents such as Claude can read your break
   status and screen time (read-only). See [For AI agents](#for-ai-agents-mcp).
 - No camera, microphone, accessibility or network access needed. It only reads
@@ -86,14 +87,19 @@ Or to Claude Desktop, in `~/Library/Application Support/Claude/claude_desktop_co
 | Tool | What it returns |
 |---|---|
 | `get_status` | Working, on a break, waiting, away or paused, and how long until the next break (and whether it's a long one) |
-| `get_today` | Today's time at the screen, longest stretch without a break, and breaks finished, skipped and postponed |
+| `get_today` | Today's time at the screen, longest stretch without a break, breaks finished, skipped and postponed, and the apps used most if they're recorded (up to 10, each used at least a minute) |
 | `get_history` | The same, one entry per day, for the last `days` days (default 7, at most 90) |
 
 **What's recorded.** Time at the screen counts while there's recent keyboard
-or mouse input, a video playing or a call, not which apps you use. Break
-events and time at the screen go to `~/Library/Application Support/EyeRest/activity.jsonl`
+or mouse input, a video playing or a call. Which apps you use is recorded only
+if you turn on **Record Apps Used**: then each minute at the screen also notes
+how long each app was in front, by its bundle ID. Window titles, documents and
+websites are never recorded. Turning it off stops recording; what's already
+recorded stays until it's 90 days old, like the rest of the log.
+Break events and time at the screen go to `~/Library/Application Support/EyeRest/activity.jsonl`
 (kept for 90 days, and compacted once a day so each stretch at the screen is
-one line), and the current state to `status.json` next to it.
+one line, or one a day if it runs past midnight), and the current state to
+`status.json` next to it.
 Nothing leaves your Mac unless an agent reads it: what an agent reads becomes
 part of its conversation with its model.
 
@@ -128,6 +134,7 @@ example `swift run EyeRest -workSeconds 600 -idleResetSeconds 300` (set
 | `holdDuringSlideshows` | true | Hold breaks during Keynote or PowerPoint slideshows |
 | `holdDuringMeetings` | false | Hold breaks during calendar meetings |
 | `showTimer` | true | Show the countdown in the menu bar |
+| `recordApps` | false | Record which app is in front while you're at the screen |
 
 To change one permanently: `defaults write io.github.fengzdadi.EyeRest idleResetSeconds -int 300`.
 
@@ -164,14 +171,14 @@ calls. It reads the Mac's state through an `ActivityProbe`, so the tests in
 | `BreakScheduler.swift` | Ticks the timer once a second and mirrors it into the break screen, heads-up and menu |
 | `LiveProbe.swift` | The real `ActivityProbe`: idle time, screen lock, and the "Hold Breaks During" checks, the slow ones reused for 5 seconds |
 | `EyeRestCore/CachedCheck.swift` | Keeps a slow check's answer for a few seconds |
-| `Activity.swift` | Idle time (`CGEventSource`), camera use (CoreMediaIO), microphone use per process and the app behind it (Core Audio), display-sleep assertions (IOKit), slideshow windows (`CGWindowList`) |
+| `Activity.swift` | Idle time (`CGEventSource`), the app in front (`NSWorkspace`), camera use (CoreMediaIO), microphone use per process and the app behind it (Core Audio), display-sleep assertions (IOKit), slideshow windows (`CGWindowList`) |
 | `MeetingCalendar.swift` | Current calendar meeting (EventKit) |
 | `HeadsUp.swift` | The countdown pill before a break; a panel that never becomes key |
 | `BreakOverlay.swift` | Non-activating full-screen panels, so focus goes back to your app after the break |
 | `StatusMenu.swift` | Menu bar icon, countdown and menu, with today's screen time |
-| `WeekChart.swift` | The last 7 days' chart in the menu (SwiftUI), with the numbers for the day under the pointer |
+| `WeekChart.swift` | The last 7 days' chart in the menu (SwiftUI), with the numbers and the apps used most for the day under the pointer |
 | `ActivityLogger.swift` | Writes the activity log, which the MCP server reads, and the status file for it; keeps the last week in memory for the menu |
-| `EyeRestCore/ActivityLog.swift`, `DaySummary.swift`, `ActivityStore.swift` | Activity records, time at the screen, daily summaries, and the files they live in |
+| `EyeRestCore/ActivityLog.swift`, `DaySummary.swift`, `ActivityStore.swift` | Activity records, time at the screen (and in each app), daily summaries, and the files they live in |
 | `EyeRestCore/OncePerDay.swift` | When the daily compaction of the activity log is due |
 | `EyeRestMCP/MCPServer.swift` | The MCP server: JSON-RPC over stdio, three read-only tools |
 | `PanelSupport.swift` | Screen-under-mouse lookup and fade animations shared by the panels |

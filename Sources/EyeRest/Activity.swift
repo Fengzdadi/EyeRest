@@ -18,6 +18,13 @@ enum Activity {
         CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: .keyDown)
     }
 
+    /// The bundle identifier of the app in front. NSWorkspace keeps it up to
+    /// date as apps activate, so asking every second is cheap.
+    @MainActor
+    static func frontmostApp() -> String? {
+        NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+    }
+
     /// True when some app (usually a video player) is keeping the display awake.
     static func isDisplayHeldAwake() -> Bool {
         var status: Unmanaged<CFDictionary>?

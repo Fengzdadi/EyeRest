@@ -102,12 +102,12 @@ public struct ActivityStore: Sendable {
     }
 
     /// Drops records older than `days` days before `now` and merges each
-    /// stretch's chunks into one record, rewriting the file only if that
+    /// stretch's chunks into a record per day, rewriting the file only if that
     /// changes anything. Done daily, it keeps the log small and quick to read.
-    public func compact(keepingDays days: Int, now: Date) throws {
+    public func compact(keepingDays days: Int, now: Date, calendar: Calendar = .current) throws {
         let cutoff = now.addingTimeInterval(-TimeInterval(days) * 86_400)
         let all = records()
-        let kept = ActivityRecord.mergingChunks(all.filter { ($0.end ?? $0.start) >= cutoff })
+        let kept = ActivityRecord.mergingChunks(all.filter { ($0.end ?? $0.start) >= cutoff }, calendar: calendar)
         guard kept.count < all.count else { return }
         try Self.lines(kept).write(to: activityURL, options: .atomic)
     }

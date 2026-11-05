@@ -1,3 +1,4 @@
+import AppKit
 import EyeRestCore
 import Foundation
 
@@ -9,14 +10,18 @@ public struct MCPServer {
     public var now: () -> Date
     /// Whether the EyeRest app with this process ID is still running.
     public var isRunning: (Int32) -> Bool
+    /// The name of the app with this bundle identifier, if it's installed.
+    public var appName: (String) -> String?
 
     public init(store: ActivityStore, version: String,
                 now: @escaping () -> Date = Date.init,
-                isRunning: @escaping (Int32) -> Bool = { kill($0, 0) == 0 }) {
+                isRunning: @escaping (Int32) -> Bool = { kill($0, 0) == 0 },
+                appName: @escaping (String) -> String? = MCPServer.installedAppName) {
         self.store = store
         self.version = version
         self.now = now
         self.isRunning = isRunning
+        self.appName = appName
     }
 
     /// Newest first. A client asking for another version gets the newest.
@@ -27,8 +32,9 @@ public struct MCPServer {
         something 20 feet away for 20 seconds, with a longer stand-up break about every hour. \
         These tools show whether a break is coming up, how long the user has been at the screen \
         today and over recent days, and how they've kept up with breaks. Screen time is time with \
-        recent keyboard or mouse input, a video playing or a call; it doesn't track which apps are used. \
-        All data stays on this Mac.
+        recent keyboard or mouse input, a video playing or a call. If the user has turned on \
+        Record Apps Used, each day also lists the apps that were in front most of that time; window \
+        titles, documents and websites are never recorded. All data stays on this Mac.
         """
 
     // MARK: JSON-RPC
@@ -95,14 +101,14 @@ public struct MCPServer {
         [
             "name": "get_today",
             "title": "Today's screen time and breaks",
-            "description": "Today so far: time at the screen, the longest stretch without a break, and how many breaks the user finished, skipped or postponed.",
+            "description": "Today so far: time at the screen, the longest stretch without a break, how many breaks the user finished, skipped or postponed, and, if app recording is on, the apps used most (up to 10, each used at least a minute).",
             "inputSchema": ["type": "object", "properties": [String: Any]()],
             "annotations": ["readOnlyHint": true, "openWorldHint": false],
         ],
         [
             "name": "get_history",
             "title": "Screen time and breaks by day",
-            "description": "One summary per day for recent days, oldest first: time at the screen, the longest stretch without a break, and breaks finished, skipped and postponed.",
+            "description": "One summary per day for recent days, oldest first: time at the screen, the longest stretch without a break, breaks finished, skipped and postponed, and, if app recording is on, the apps used most.",
             "inputSchema": [
                 "type": "object",
                 "properties": [
@@ -124,12 +130,12 @@ public struct MCPServer {
             output = status()
         case "get_today":
             let records = store.records()
-            output = summary(DaySummary.summaries(of: records, days: 1, now: now())[0])
+            output = summaries(DaySummary.summaries(of: records, days: 1, now: now()))[0]
             output["trackingSince"] = trackingSince(records)
         case "get_history":
             let days = min(90, max(1, (arguments["days"] as? Int) ?? 7))
             let records = store.records()
-            output = ["days": DaySummary.summaries(of: records, days: days, now: now()).map(summary)]
+            output = ["days": summaries(DaySummary.summaries(of: records, days: days, now: now()))]
             output["trackingSince"] = trackingSince(records)
         default:
             return nil
@@ -188,8 +194,15 @@ public struct MCPServer {
         return out
     }
 
-    private func summary(_ day: DaySummary) -> [String: Any] {
-        [
+    /// The days as tool output, looking up each app's name once.
+    private func summaries(_ days: [DaySummary]) -> [[String: Any]] {
+        var names: [String: String] = [:]
+        for app in Set(days.flatMap(\.apps.keys)) { names[app] = appName(app) }
+        return days.map { summary($0, names: names) }
+    }
+
+    private func summary(_ day: DaySummary, names: [String: String]) -> [String: Any] {
+        var out: [String: Any] = [
             "date": day.date,
             "screenTime": Self.duration(day.screenSeconds),
             "screenSeconds": Int(day.screenSeconds),
@@ -200,6 +213,28 @@ public struct MCPServer {
             "breaksSkipped": day.breaksSkipped,
             "breaksPostponed": day.breaksPostponed,
         ]
+        // Left out when apps weren't recorded, rather than an empty list that
+        // could read as no apps used.
+        let apps = day.mostUsedApps(limit: 10)
+        if !apps.isEmpty {
+            out["apps"] = apps.map { app, seconds in
+                [
+                    "name": names[app] ?? app,
+                    "bundleID": app,
+                    "screenTime": Self.duration(seconds),
+                    "screenSeconds": Int(seconds),
+                ] as [String: Any]
+            }
+        }
+        return out
+    }
+
+    /// The name Finder shows for the app with this bundle identifier, if it's
+    /// installed.
+    public static func installedAppName(_ bundleID: String) -> String? {
+        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else { return nil }
+        let name = FileManager.default.displayName(atPath: url.path)
+        return name.hasSuffix(".app") ? String(name.dropLast(4)) : name
     }
 
     /// When the log starts, so a short history isn't mistaken for no screen time.

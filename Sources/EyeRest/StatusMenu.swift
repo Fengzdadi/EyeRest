@@ -14,6 +14,9 @@ final class StatusMenu: NSObject, NSMenuDelegate {
     /// "Last 7 Days", with the chart in its submenu.
     private let historyItem = NSMenuItem(title: String(localized: "Last 7 Days"), action: nil, keyEquivalent: "")
     private let chart = WeekChart.Model()
+    private let chartItem = NSMenuItem()
+    /// Under the chart, the switch for recording apps.
+    private let recordAppsItem = NSMenuItem(title: String(localized: "Record Apps Used"), action: nil, keyEquivalent: "")
     private var isMenuOpen = false
     /// What the menu bar button shows now, to skip redraws when nothing changed.
     private var shownSymbol = ""
@@ -28,10 +31,13 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         super.init()
         statusLine.isEnabled = false
         todayLine.isEnabled = false
-        let chartItem = NSMenuItem()
-        chartItem.view = WeekChartView(model: chart)
+        recordAppsItem.action = #selector(toggleRecordApps)
+        recordAppsItem.target = self
+        recordAppsItem.toolTip = String(localized: "Which app is in front while you're at the screen, to show the apps you use most. Never window titles, documents or websites.")
         historyItem.submenu = NSMenu()
         historyItem.submenu?.addItem(chartItem)
+        historyItem.submenu?.addItem(.separator())
+        historyItem.submenu?.addItem(recordAppsItem)
         menu.delegate = self
         item.menu = menu
         item.button?.imagePosition = .imageLeading
@@ -85,6 +91,7 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         statusLine.title = statusText()
         menu.addItem(statusLine)
         showScreenTime()
+        recordAppsItem.state = Settings.recordApps ? .on : .off
         menu.addItem(todayLine)
         menu.addItem(historyItem)
         menu.addItem(.separator())
@@ -162,12 +169,22 @@ final class StatusMenu: NSObject, NSMenuDelegate {
                 date: calendar.date(byAdding: .day, value: index - (summaries.count - 1), to: today)!,
                 screenSeconds: summary.screenSeconds,
                 breaksFinished: summary.breaksFinished,
-                breaksSkipped: summary.breaksSkipped)
+                breaksSkipped: summary.breaksSkipped,
+                apps: summary.mostUsedApps(limit: WeekChart.appRows).map { .init(bundleID: $0.bundleID, seconds: $0.seconds) })
         }
         let day = days[days.count - 1]
         todayLine.title = String(localized: "Today: \(day.screenTime) at the screen · \(day.breaksFinished) breaks finished, \(day.breaksSkipped) skipped")
         todayLine.setAccessibilityTitle(String(localized: "Today: \(day.spokenScreenTime) at the screen · \(day.breaksFinished) breaks finished, \(day.breaksSkipped) skipped"))
         if days != chart.days { chart.days = days }
+
+        // The apps show while they're recorded, and while the week has some.
+        // A menu item's view keeps its size, so the chart's is made again
+        // when that changes its height.
+        let showsApps = Settings.recordApps || days.contains { !$0.apps.isEmpty }
+        if showsApps != chart.showsApps || chartItem.view == nil {
+            chart.showsApps = showsApps
+            chartItem.view = WeekChartView(model: chart)
+        }
     }
 
     // MARK: Actions
@@ -234,6 +251,12 @@ final class StatusMenu: NSObject, NSMenuDelegate {
 
     @objc private func togglePlaySound() {
         Settings.playSound.toggle()
+    }
+
+    /// Turning it off stops recording; what's recorded stays in the log until
+    /// it's 90 days old.
+    @objc private func toggleRecordApps() {
+        Settings.recordApps.toggle()
     }
 
     /// The menu item's tag indexes `languages`.
