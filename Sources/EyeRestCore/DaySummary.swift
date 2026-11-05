@@ -20,7 +20,9 @@ public struct DaySummary: Codable, Equatable, Sendable {
 
     /// Summaries for the `days` calendar days ending with the day of `now`,
     /// oldest first. Stretches crossing midnight are split between the days.
-    public static func summaries(of records: [ActivityRecord], days: Int, now: Date,
+    /// Days that ended by `since`, such as days before the log begins, are
+    /// left out; the day of `now` never is.
+    public static func summaries(of records: [ActivityRecord], days: Int, now: Date, since: Date? = nil,
                                  calendar: Calendar = .current) -> [DaySummary] {
         let today = calendar.startOfDay(for: now)
         let formatter = DateFormatter()
@@ -29,10 +31,12 @@ public struct DaySummary: Codable, Equatable, Sendable {
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd"
 
-        return (0..<max(1, days)).reversed().map { back in
-            let dayStart = calendar.date(byAdding: .day, value: -back, to: today)!
-            let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart)!
-            return summary(of: records, from: dayStart, to: dayEnd, date: formatter.string(from: dayStart))
+        return (0..<max(1, days)).reversed().compactMap { back in
+            // Counting back from today lands on the right day, but not always
+            // at its start: where clocks skip midnight, a day starts at 01:00.
+            let day = calendar.dateInterval(of: .day, for: calendar.date(byAdding: .day, value: -back, to: today)!)!
+            if back > 0, let since, day.end <= since { return nil }
+            return summary(of: records, from: day.start, to: day.end, date: formatter.string(from: day.start))
         }
     }
 

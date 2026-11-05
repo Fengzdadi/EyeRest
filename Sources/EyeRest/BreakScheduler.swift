@@ -25,7 +25,8 @@ final class BreakScheduler: ObservableObject {
     private var core = BreakTimer(config: .current)
     private let overlay = BreakOverlay()
     private let headsUp = HeadsUp()
-    private let activity = ActivityLogger()
+    /// Also where the menu gets its screen time from.
+    let activity = ActivityLogger()
     private var ticker: Timer?
     /// A monotonic clock (unlike Date, unaffected by clock changes) that keeps
     /// counting while the Mac sleeps, so a sleep shows up as a long gap.

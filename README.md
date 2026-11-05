@@ -35,8 +35,10 @@ something 20 feet (about 6 m) away for 20 seconds.
 - English and Simplified Chinese (界面支持简体中文). Pick one under
   **Language** in the menu, or follow the system.
 - Launch at login.
-- **Your day at a glance.** The menu shows today's time at the screen and
-  breaks taken and skipped, with the last 7 days in a submenu.
+- **Your day at a glance.** The menu shows today's time at the screen and the
+  breaks you finished and skipped, with a chart of the last 7 days in a
+  submenu; point at a day for its numbers. Stepping away restarts the timer
+  but isn't counted as a break.
 - **An MCP server for AI agents.** Agents such as Claude can read your break
   status and screen time (read-only). See [For AI agents](#for-ai-agents-mcp).
 - No camera, microphone, accessibility or network access needed. It only reads
@@ -104,8 +106,10 @@ make test   # unit tests for the break timer
 make app    # build build/EyeRest.app without installing
 ```
 
-Any setting can be overridden for one run, for example
-`swift run EyeRest -workSeconds 600 -idleResetSeconds 300`.
+`make run` and `make demo` keep their activity log in `build/dev-data`, apart
+from the installed app's. Any setting can be overridden for one run, for
+example `swift run EyeRest -workSeconds 600 -idleResetSeconds 300` (set
+`EYEREST_DATA_DIR` to keep that run's log apart too).
 
 | Setting | Default | Meaning |
 |---|---|---|
@@ -164,8 +168,9 @@ calls. It reads the Mac's state through an `ActivityProbe`, so the tests in
 | `MeetingCalendar.swift` | Current calendar meeting (EventKit) |
 | `HeadsUp.swift` | The countdown pill before a break; a panel that never becomes key |
 | `BreakOverlay.swift` | Non-activating full-screen panels, so focus goes back to your app after the break |
-| `StatusMenu.swift` | Menu bar icon, countdown and menu, with today's screen time and the last 7 days |
-| `ActivityLogger.swift` | Writes the activity log, which the menu and the MCP server read, and the status file for the MCP server |
+| `StatusMenu.swift` | Menu bar icon, countdown and menu, with today's screen time |
+| `WeekChart.swift` | The last 7 days' chart in the menu (SwiftUI), with the numbers for the day under the pointer |
+| `ActivityLogger.swift` | Writes the activity log, which the MCP server reads, and the status file for it; keeps the last week in memory for the menu |
 | `EyeRestCore/ActivityLog.swift`, `DaySummary.swift`, `ActivityStore.swift` | Activity records, time at the screen, daily summaries, and the files they live in |
 | `EyeRestCore/OncePerDay.swift` | When the daily compaction of the activity log is due |
 | `EyeRestMCP/MCPServer.swift` | The MCP server: JSON-RPC over stdio, three read-only tools |

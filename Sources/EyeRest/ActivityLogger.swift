@@ -4,7 +4,8 @@ import os
 
 private let log = Logger(subsystem: "io.github.fengzdadi.EyeRest", category: "activity")
 
-/// Keeps the activity log and the status file that the MCP server reads.
+/// Keeps the activity log and the status file that the MCP server reads, and
+/// the last week of the log for the menu.
 @MainActor
 final class ActivityLogger {
     private let store = ActivityStore()
@@ -13,6 +14,34 @@ final class ActivityLogger {
     private var compaction = OncePerDay()
     /// What the status file says now, minus timestamps that move every second.
     private var statusKey = ""
+    /// The last week of the log, read from the file the first time the menu
+    /// asks and kept up to date as records are written. The menu asks every
+    /// second while it's open, and Accessibility clients can make it ask
+    /// while it's closed, so the file is read only once.
+    private var recent: [ActivityRecord]?
+    /// When the log begins.
+    private var firstRecord: Date?
+
+    /// Summaries for the last `days` days, oldest first, counting the stretch
+    /// at the screen not written to the log yet. Days before the log begins
+    /// are left out.
+    func summaries(days: Int, now: Date) -> [DaySummary] {
+        if recent == nil {
+            let records = store.records()
+            firstRecord = records.map(\.start).min()
+            recent = Self.lastWeek(of: records, now: now)
+        }
+        let pending = recorder.pending
+        let records = (recent ?? []) + (pending.map { [$0] } ?? [])
+        return DaySummary.summaries(of: records, days: days, now: now, since: firstRecord ?? pending?.start ?? now)
+    }
+
+    /// The records of the last 8 days, enough for a week of calendar days,
+    /// with each stretch's chunks merged.
+    private static func lastWeek(of records: [ActivityRecord], now: Date) -> [ActivityRecord] {
+        let cutoff = now.addingTimeInterval(-8 * 86_400)
+        return ActivityRecord.mergingChunks(records.filter { ($0.end ?? $0.start) >= cutoff })
+    }
 
     /// Records whether the user is at the screen, once a tick, from what the
     /// timer worked out on that tick.
@@ -26,8 +55,10 @@ final class ActivityLogger {
         }
     }
 
-    /// Drops records older than 90 days and merges each stretch's chunks.
+    /// Drops records older than 90 days and merges each stretch's chunks, and
+    /// does the same to the last week kept for the menu.
     private func compact(now: Date) {
+        recent = recent.map { Self.lastWeek(of: $0, now: now) }
         do {
             try store.compact(keepingDays: 90, now: now)
         } catch {
@@ -94,6 +125,10 @@ final class ActivityLogger {
     }
 
     private func write(_ records: [ActivityRecord]) {
+        if recent != nil {
+            recent?.append(contentsOf: records)
+            if firstRecord == nil { firstRecord = records.first?.start }
+        }
         do {
             try store.append(records)
         } catch {

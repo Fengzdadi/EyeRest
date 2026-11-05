@@ -103,11 +103,19 @@ public struct ScreenTimeRecorder: Sendable {
         return nil
     }
 
+    /// The part of the current stretch not written yet: from its start, or
+    /// the end of its last chunk, to the last sighting.
+    public var pending: ActivityRecord? {
+        guard let start, let lastSeen, lastSeen > start else { return nil }
+        return ActivityRecord(kind: .active, start: start, end: lastSeen)
+    }
+
     /// Ends the current stretch, e.g. when the app quits.
     public mutating func close() -> ActivityRecord? {
-        guard let start, let lastSeen else { return nil }
-        self.start = nil
-        self.lastSeen = nil
-        return lastSeen > start ? ActivityRecord(kind: .active, start: start, end: lastSeen) : nil
+        defer {
+            start = nil
+            lastSeen = nil
+        }
+        return pending
     }
 }

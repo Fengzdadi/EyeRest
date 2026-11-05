@@ -12,12 +12,17 @@
 "Paused until %@" = "暂停至 %@";
 
 /* Menu: screen time */
-"Today: %@ at the screen · Breaks taken: %lld · Skipped: %lld" = "今天：屏幕前 %@ · 休息 %lld 次 · 跳过 %lld 次";
+"Today: %@ at the screen · %lld breaks finished, %lld skipped" = "今天：屏幕前 %@ · 完成休息 %lld 次，跳过 %lld 次";
 "Last 7 Days" = "最近 7 天";
+
+/* Last 7 days chart */
 "Today" = "今天";
 "Yesterday" = "昨天";
-"%lld taken" = "休息 %lld 次";
-"%lld skipped" = "跳过 %lld 次";
+"%@ at the screen · %lld finished · %lld skipped" = "屏幕前 %@ · 完成 %lld 次 · 跳过 %lld 次";
+"Time at the screen" = "屏幕前时间";
+"Breaks" = "休息";
+"Finished" = "完成";
+"Skipped" = "跳过";
 
 /* Why a break is waiting */
 "camera in use" = "摄像头使用中";

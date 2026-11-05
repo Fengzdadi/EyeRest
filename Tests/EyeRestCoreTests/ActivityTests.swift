@@ -57,6 +57,15 @@ struct Recorder {
         #expect(recorder.close() == nil)
     }
 
+    @Test func thePartNotWrittenYetCanBeRead() {
+        var recorder = ScreenTimeRecorder(chunkSeconds: 60)
+        let records = run(&recorder, 0, 90) { at(TimeInterval($0)) }
+        #expect(records == [active(0, 60)])
+        #expect(recorder.pending == active(60, 90))
+        #expect(recorder.close() == active(60, 90))
+        #expect(recorder.pending == nil)
+    }
+
     /// The timer decides what counts as being there; see `PresenceChecks`.
     @Test func lastSeenFollowsPresenceAndBreaks() {
         let now = at(100)
@@ -113,6 +122,43 @@ struct Summaries {
     @Test func daysComeOldestFirst() {
         let days = DaySummary.summaries(of: [], days: 3, now: at(0), calendar: utc)
         #expect(days.map(\.date) == ["2027-01-13", "2027-01-14", "2027-01-15"])
+    }
+
+    @Test func daysBeforeTheLogBeginsAreLeftOut() {
+        let days = DaySummary.summaries(of: [], days: 7, now: at(0), since: at(-86_400), calendar: utc)
+        #expect(days.map(\.date) == ["2027-01-14", "2027-01-15"])
+        // With the clock set back before the log begins, today still shows.
+        let setBack = DaySummary.summaries(of: [], days: 7, now: at(0), since: at(86_400), calendar: utc)
+        #expect(setBack.map(\.date) == ["2027-01-15"])
+    }
+
+    /// In Santiago, clocks jump from 00:00 to 01:00 on 6 September 2026, so
+    /// that day starts at 01:00.
+    @Test func daysFollowTheClocksWhenMidnightIsSkipped() {
+        var santiago = Calendar(identifier: .gregorian)
+        santiago.timeZone = TimeZone(identifier: "America/Santiago")!
+        func local(_ day: Int, _ hour: Int, _ minute: Int = 0) -> Date {
+            santiago.date(from: DateComponents(year: 2026, month: 9, day: day, hour: hour, minute: minute))!
+        }
+        func night(_ day: Int) -> [ActivityRecord] {
+            [ActivityRecord(kind: .active, start: local(day, 0, 10), end: local(day, 0, 50)),
+             ActivityRecord(kind: .breakFinished, start: local(day, 0, 30), long: false)]
+        }
+
+        // 00:10 to 00:50 on the 7th belongs to the 7th alone.
+        let after = DaySummary.summaries(of: night(7), days: 3, now: local(8, 12), calendar: santiago)
+        #expect(after.map(\.date) == ["2026-09-06", "2026-09-07", "2026-09-08"])
+        #expect(after.map(\.screenSeconds) == [0, 2400, 0])
+        #expect(after.map(\.breaksFinished) == [0, 1, 0])
+
+        // On the 6th itself, the 5th still starts at midnight.
+        let during = DaySummary.summaries(of: night(5), days: 3, now: local(6, 12), calendar: santiago)
+        #expect(during.map(\.date) == ["2026-09-04", "2026-09-05", "2026-09-06"])
+        #expect(during.map(\.screenSeconds) == [0, 2400, 0])
+
+        // A log that begins on the 6th is shown from the 6th.
+        let since = DaySummary.summaries(of: [], days: 7, now: local(8, 12), since: local(6, 9), calendar: santiago)
+        #expect(since.map(\.date) == ["2026-09-06", "2026-09-07", "2026-09-08"])
     }
 }
 
