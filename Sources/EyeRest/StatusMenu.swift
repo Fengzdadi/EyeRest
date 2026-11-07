@@ -221,6 +221,10 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         Settings.holdDuringSlideshows.toggle()
     }
 
+    @objc private func toggleHoldDuringFullScreen() {
+        Settings.holdDuringFullScreen.toggle()
+    }
+
     /// Turning this on asks for calendar access the first time.
     @objc private func toggleHoldDuringMeetings() {
         if Settings.holdDuringMeetings {
@@ -299,6 +303,7 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         parent.submenu = NSMenu()
         parent.submenu?.addItem(toggleItem(String(localized: "Calls (Camera or Mic in Use)"), Settings.holdDuringCalls, #selector(toggleHoldDuringCalls)))
         parent.submenu?.addItem(toggleItem(String(localized: "Keynote and PowerPoint Slideshows"), Settings.holdDuringSlideshows, #selector(toggleHoldDuringSlideshows)))
+        parent.submenu?.addItem(toggleItem(String(localized: "Full-Screen Videos and Games"), Settings.holdDuringFullScreen, #selector(toggleHoldDuringFullScreen)))
         let meetings = toggleItem(
             String(localized: "Calendar Meetings"),
             Settings.holdDuringMeetings && scheduler.calendar.hasAccess,

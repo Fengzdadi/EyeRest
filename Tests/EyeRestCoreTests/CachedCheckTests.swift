@@ -19,4 +19,13 @@ struct Caching {
         #expect(ask(at: 9, answer: "camera in use") == nil)  // "not in a call" is reused too
         #expect(checks == 2)
     }
+
+    @Test func aResetAnswerIsCheckedAgain() {
+        var cache = CachedCheck<String?>(lifetime: .seconds(5))
+        let start = ContinuousClock.now
+        #expect(cache.value(at: start) { nil } == nil)
+        cache.reset()
+        #expect(cache.value(at: start + .seconds(1)) { "full-screen video in TV" } == "full-screen video in TV")
+        #expect(cache.value(at: start + .seconds(2)) { nil } == "full-screen video in TV")
+    }
 }

@@ -2,6 +2,7 @@ import AppKit
 import CoreAudio
 import CoreGraphics
 import CoreMediaIO
+import EyeRestCore
 import Foundation
 import IOKit.pwr_mgt
 
@@ -53,29 +54,111 @@ enum Activity {
 
     /// The name of a presentation app that is showing a slideshow, otherwise nil.
     ///
-    /// A slideshow is a window from one of these apps that covers a whole
-    /// display (Keynote plays above normal windows, PowerPoint at the normal
-    /// level). Editing a deck in native full screen looks the same, so it counts
-    /// too. Window bounds and owners are readable without screen recording access.
+    /// A slideshow is a window from one of these apps that fills a display
+    /// (Keynote plays above normal windows, PowerPoint at the normal level).
+    /// Editing a deck in native full screen looks the same, so it counts too.
     @MainActor
     static func slideshowApp() -> String? {
         let apps = NSWorkspace.shared.runningApplications.filter { slideshowApps[$0.bundleIdentifier ?? ""] != nil }
-        guard !apps.isEmpty,
-              let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]]
-        else { return nil }
+        guard !apps.isEmpty else { return nil }
+        let windows = onScreenWindows()
+        let displays = displayBounds()
+        let showing = apps.first { app in
+            DisplayFill.fillsDisplay(windows: windows[Int(app.processIdentifier)] ?? [], displays: displays)
+        }
+        return showing.flatMap { slideshowApps[$0.bundleIdentifier ?? ""] }
+    }
 
-        let screenSizes = NSScreen.screens.map(\.frame.size)
-        for app in apps {
-            let pid = Int(app.processIdentifier)
-            let coversScreen = windows.contains { window in
-                guard window[kCGWindowOwnerPID as String] as? Int == pid,
-                      let bounds = window[kCGWindowBounds as String] as? NSDictionary,
-                      let rect = CGRect(dictionaryRepresentation: bounds) else { return false }
-                return screenSizes.contains { abs($0.width - rect.width) < 1 && abs($0.height - rect.height) < 1 }
-            }
-            if coversScreen { return slideshowApps[app.bundleIdentifier ?? ""] }
+    // MARK: Full-screen videos and games
+
+    /// Apps that call themselves games but aren't one: the Games app that
+    /// comes with macOS 26 is a library and launcher.
+    private static let notGames: Set<String> = ["com.apple.games"]
+
+    /// Display assertions taken for something other than a video: a web page
+    /// keeping the screen on (Screen Wake Lock) and a keep-awake extension in
+    /// Chrome, and OBS while it records or streams.
+    private static let notVideos: Set<String> = ["Blink Wake Lock", "PowerAPI", "OBS Video/audio"]
+
+    /// A short reason when the app in front fills a display and is playing a
+    /// video or is a game, otherwise nil. Keynote and PowerPoint are left to the
+    /// slideshow check, which has its own setting.
+    @MainActor
+    static func fullScreenVideoOrGame() -> String? {
+        guard let front = NSWorkspace.shared.frontmostApplication,
+              slideshowApps[front.bundleIdentifier ?? ""] == nil else { return nil }
+        let pid = front.processIdentifier
+        let name = front.localizedName ?? front.bundleIdentifier ?? ""
+        // The cheap checks first, so most of the time no window list is read.
+        if isGame(front) {
+            return fillsDisplay(pid: pid) ? String(localized: "playing \(name) in full screen") : nil
+        }
+        if keepsDisplayAwake(pid: pid), fillsDisplay(pid: pid) {
+            return String(localized: "full-screen video in \(name)")
         }
         return nil
+    }
+
+    /// Whether the app calls itself a game in its Info.plist: the games
+    /// category or one of its kinds, such as board games. macOS goes by the same
+    /// category to turn on Game Mode. The Info.plist is read afresh each time,
+    /// since `Bundle` keeps the first one it read until EyeRest quits.
+    private static func isGame(_ app: NSRunningApplication) -> Bool {
+        guard let url = app.bundleURL, !notGames.contains(app.bundleIdentifier ?? ""),
+              let info = CFBundleCopyInfoDictionaryInDirectory(url as CFURL) as? [String: Any],
+              let category = info["LSApplicationCategoryType"] as? String
+        else { return false }
+        return category == "public.app-category.games"
+            || (category.hasPrefix("public.app-category.") && category.hasSuffix("-games"))
+    }
+
+    /// Whether the process keeps the display awake, as video players and
+    /// browsers do while a video plays, itself or through a system service
+    /// acting for it. Unlike `isDisplayHeldAwake()`, a tool like `caffeinate`
+    /// or a video playing in another app doesn't count.
+    private static func keepsDisplayAwake(pid: pid_t) -> Bool {
+        var byProcess: Unmanaged<CFDictionary>?
+        guard IOPMCopyAssertionsByProcess(&byProcess) == kIOReturnSuccess,
+              let processes = byProcess?.takeRetainedValue() as? [Int: [[String: Any]]] else { return false }
+        return processes.contains { owner, assertions in
+            assertions.contains { assertion in
+                // AssertionTrueType gives an old type, such as NoDisplaySleepAssertion,
+                // its current name.
+                (assertion["AssertionTrueType"] ?? assertion["AssertType"]) as? String == "PreventUserIdleDisplaySleep"
+                    && assertion["AssertLevel"] as? Int == Int(kIOPMAssertionLevelOn)
+                    && !notVideos.contains(assertion["AssertName"] as? String ?? "")
+                    && (owner == Int(pid) || assertion["AssertionOnBehalfOfPID"] as? Int == Int(pid))
+            }
+        }
+    }
+
+    /// Whether one of the process's windows fills a display (see `DisplayFill`).
+    private static func fillsDisplay(pid: pid_t) -> Bool {
+        DisplayFill.fillsDisplay(windows: onScreenWindows()[Int(pid)] ?? [], displays: displayBounds())
+    }
+
+    /// The bounds of the windows on screen, by the process that owns them.
+    /// Bounds and owners can be read without screen recording access.
+    private static func onScreenWindows() -> [Int: [CGRect]] {
+        guard let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]]
+        else { return [:] }
+        var windows: [Int: [CGRect]] = [:]
+        for window in list {
+            guard let owner = window[kCGWindowOwnerPID as String] as? Int,
+                  let bounds = window[kCGWindowBounds as String] as? NSDictionary,
+                  let rect = CGRect(dictionaryRepresentation: bounds) else { continue }
+            windows[owner, default: []].append(rect)
+        }
+        return windows
+    }
+
+    /// The bounds of each display, in the window list's coordinates.
+    private static func displayBounds() -> [CGRect] {
+        var count: UInt32 = 0
+        guard CGGetActiveDisplayList(0, nil, &count) == .success, count > 0 else { return [] }
+        var displays = [CGDirectDisplayID](repeating: 0, count: Int(count))
+        guard CGGetActiveDisplayList(count, &displays, &count) == .success else { return [] }
+        return displays.prefix(Int(count)).map(CGDisplayBounds)
     }
 
     // MARK: Camera

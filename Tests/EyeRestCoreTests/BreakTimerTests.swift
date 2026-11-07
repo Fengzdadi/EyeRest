@@ -177,15 +177,51 @@ struct Away {
         #expect(rig.remaining == 10)  // the grace, then the held break
     }
 
-    @Test func idleAfterTheCallEndsIsAway() {
-        var rig = Rig()
+    @Test func afterACallYouAreHereAsLongAsAfterAnInput() {
+        var rig = Rig { $0.workSeconds = 3600 }
         rig.probe.inCall = true
         rig.probe.idle = 120
         rig.tick()
         #expect(rig.state == .working)
         rig.probe.inCall = false
-        rig.tick()
+        rig.advanceWithoutInput(119)
+        #expect(rig.timer.presence == .here(secondsAgo: 119))
+        #expect(rig.state == .working)
+        rig.advanceWithoutInput(1)
+        #expect(rig.timer.presence == .away(seconds: 120))
         #expect(rig.state == .away)
+    }
+
+    @Test func aBreakHeldByAVideoGetsItsGraceWhenTheVideoEnds() {
+        var rig = Rig()
+        rig.probe.displayHeldAwake = true
+        rig.probe.busy = "full-screen video in TV"
+        rig.advanceWithoutInput(600)  // watching, hands off the keyboard
+        #expect(rig.state == .waiting(reason: "full-screen video in TV"))
+
+        // The video ends: nothing keeps the display awake or holds the break.
+        rig.probe.displayHeldAwake = false
+        rig.probe.busy = nil
+        rig.advanceWithoutInput(1)
+        #expect(rig.state == .working)
+        #expect(rig.remaining == 10)  // the grace, then the held break
+        rig.advanceWithoutInput(10)
+        #expect(rig.state == .onBreak)
+    }
+
+    @Test func watchingAVideoIsNotALongBreak() {
+        var rig = Rig { $0.workSeconds = 3600 }
+        for _ in 0..<2 {
+            rig.timer.takeBreakNow()
+            rig.advance(20)
+        }
+        #expect(rig.timer.nextBreakIsLong)
+        rig.probe.displayHeldAwake = true
+        rig.advanceWithoutInput(600)  // watching, hands off the keyboard
+        rig.probe.displayHeldAwake = false
+        rig.advanceWithoutInput(150)  // then away, but for less than a long break
+        #expect(rig.state == .away)
+        #expect(rig.timer.nextBreakIsLong)
     }
 
     @Test func aLockedScreenIsAwayEvenInACall() {
@@ -237,6 +273,17 @@ struct PresenceChecks {
         rig.probe.inCall = true
         rig.tick()
         #expect(rig.timer.presence == .here(secondsAgo: 0))
+    }
+
+    @Test func sleepAfterAVideoIsAwayOnlyForTheSleep() {
+        var rig = Rig()
+        rig.probe.idle = 1000
+        rig.probe.displayHeldAwake = true
+        rig.tick()
+        rig.probe.displayHeldAwake = false
+        rig.probe.idle = 1060
+        rig.tick(60)  // the Mac slept for a minute
+        #expect(rig.timer.presence == .away(seconds: 60))
     }
 
     /// The display and call checks cost the live probe system calls, so they
@@ -395,6 +442,31 @@ struct HeadsUp {
         rig.advance(5)
         #expect(rig.state == .waiting(reason: "camera in use"))
         #expect(!rig.timer.showsHeadsUp)
+    }
+
+    @Test func showsWhenAHoldEndsJustAsTheBreakIsDue() {
+        var rig = Rig()
+        rig.advance(49)
+        rig.probe.busy = "full-screen video in TV"
+        rig.advance(10)
+        #expect(rig.remaining == 1)
+        #expect(!rig.timer.showsHeadsUp)
+        rig.probe.busy = nil  // the probe notices only now
+        rig.tick()
+        #expect(rig.state == .working)
+        #expect(rig.timer.showsHeadsUp)
+        #expect(rig.remaining == 10)
+        rig.advance(10)
+        #expect(rig.state == .onBreak)
+    }
+
+    @Test func showsWhenASlowTickSkipsIt() {
+        var rig = Rig()
+        rig.advance(49)
+        rig.tick(11)
+        #expect(rig.state == .working)
+        #expect(rig.timer.showsHeadsUp)
+        #expect(rig.remaining == 10)
     }
 
     @Test func canBeTurnedOff() {
@@ -658,5 +730,14 @@ struct Rig {
     @discardableResult
     mutating func advance(_ seconds: Int) -> [BreakTimer.Event] {
         (0..<seconds).flatMap { _ in tick() }
+    }
+
+    /// Like `advance`, with no input: the idle time grows with each tick.
+    @discardableResult
+    mutating func advanceWithoutInput(_ seconds: Int) -> [BreakTimer.Event] {
+        (0..<seconds).flatMap { _ in
+            probe.idle += 1
+            return tick()
+        }
     }
 }

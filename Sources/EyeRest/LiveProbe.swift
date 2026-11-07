@@ -7,11 +7,19 @@ import EyeRestCore
 final class LiveProbe: ActivityProbe {
     private let calendar: MeetingCalendar
     private(set) var isScreenLocked = false
-    /// The call and slideshow checks are slow (the microphone check asks Core
-    /// Audio about every process that has used audio) and a due break asks
-    /// every second, so their answers are reused for a few seconds.
+    /// The call, slideshow and full-screen checks are slow (the microphone
+    /// check asks Core Audio about every process that has used audio) and a due
+    /// break asks every second, so their answers are reused for a few seconds.
     private var calls = CachedCheck<String?>(lifetime: .seconds(5))
     private var slideshows = CachedCheck<String?>(lifetime: .seconds(5))
+    private var fullScreen = CachedCheck<String?>(lifetime: .seconds(5))
+
+    private enum Hold: CaseIterable {
+        case call, slideshow, fullScreen, meeting
+    }
+    /// What held the break last time. It's asked first, so a long hold, say
+    /// for a film, doesn't keep running the slower checks before it.
+    private var lastHold: Hold?
 
     init(calendar: MeetingCalendar) {
         self.calendar = calendar
@@ -21,6 +29,17 @@ final class LiveProbe: ActivityProbe {
         }
         center.addObserver(forName: .init("com.apple.screenIsUnlocked"), object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.isScreenLocked = false }
+        }
+        // Switching apps or Spaces (as entering and leaving full screen does)
+        // changes what's on screen, so look again rather than reuse an answer.
+        let workspace = NSWorkspace.shared.notificationCenter
+        for name in [NSWorkspace.didActivateApplicationNotification, NSWorkspace.activeSpaceDidChangeNotification] {
+            workspace.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.slideshows.reset()
+                    self?.fullScreen.reset()
+                }
+            }
         }
     }
 
@@ -35,19 +54,36 @@ final class LiveProbe: ActivityProbe {
     }
 
     func busyReason() -> String? {
-        if Settings.holdDuringCalls, let reason = callReason() {
-            return reason
+        let order = lastHold.map { last in [last] + Hold.allCases.filter { $0 != last } } ?? Hold.allCases
+        for hold in order {
+            if let reason = reason(for: hold) {
+                lastHold = hold
+                return reason
+            }
         }
-        if Settings.holdDuringSlideshows, let app = slideshowApp() {
+        lastHold = nil
+        return nil
+    }
+
+    private func reason(for hold: Hold) -> String? {
+        switch hold {
+        case .call:
+            guard Settings.holdDuringCalls else { return nil }
+            return callReason()
+        case .slideshow:
+            guard Settings.holdDuringSlideshows, let app = slideshowApp() else { return nil }
             return String(localized: "\(app) slideshow")
-        }
-        if Settings.holdDuringMeetings, let title = calendar.currentMeeting() {
+        case .fullScreen:
+            guard Settings.holdDuringFullScreen else { return nil }
+            return fullScreenReason()
+        case .meeting:
+            guard Settings.holdDuringMeetings, let title = calendar.currentMeeting() else { return nil }
             let short = title.count > 30 ? String(title.prefix(29)) + "…" : title
             return String(localized: "meeting: \(short)")
         }
-        return nil
     }
 
     private func callReason() -> String? { calls.value { Activity.callInProgress() } }
     private func slideshowApp() -> String? { slideshows.value { Activity.slideshowApp() } }
+    private func fullScreenReason() -> String? { fullScreen.value { Activity.fullScreenVideoOrGame() } }
 }

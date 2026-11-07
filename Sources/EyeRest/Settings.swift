@@ -23,6 +23,7 @@ enum Settings {
             "playSound": true,
             "holdDuringCalls": true,
             "holdDuringSlideshows": true,
+            "holdDuringFullScreen": true,
             "holdDuringMeetings": false,
             "showTimer": true,
             "recordApps": false,
@@ -51,8 +52,8 @@ enum Settings {
         defaults.integer(forKey: "idleResetSeconds")
     }
 
-    /// After a held break is released (the call or meeting ended), wait this
-    /// long before starting it.
+    /// After a held break is released (the call, slideshow, full-screen video
+    /// or game, or meeting ended), wait this long before starting it.
     static var graceSeconds: Int {
         defaults.integer(forKey: "graceSeconds")
     }
@@ -115,6 +116,13 @@ enum Settings {
     static var holdDuringSlideshows: Bool {
         get { defaults.bool(forKey: "holdDuringSlideshows") }
         set { defaults.set(newValue, forKey: "holdDuringSlideshows") }
+    }
+
+    /// Hold a due break while the app in front fills a display with a video or
+    /// a game.
+    static var holdDuringFullScreen: Bool {
+        get { defaults.bool(forKey: "holdDuringFullScreen") }
+        set { defaults.set(newValue, forKey: "holdDuringFullScreen") }
     }
 
     /// Hold a due break during calendar meetings. Needs calendar access.

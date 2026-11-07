@@ -22,10 +22,12 @@ something 20 feet (about 6 m) away for 20 seconds.
 - **Knows when you're away.** No input for 2 minutes, a locked screen or a
   sleeping Mac counts as a natural break and restarts the timer. Watching a
   video (an app keeping the display awake) or sitting through a call without
-  touching the keyboard doesn't count as away.
+  touching the keyboard doesn't count as away, and the 2 minutes start over
+  when the video or the call ends.
 - **Doesn't interrupt you when you're busy.** A due break waits while:
   - the camera or microphone is in use (a call),
   - Keynote or PowerPoint is showing a slideshow,
+  - the app in front fills the screen with a video or a game,
   - a calendar meeting is in progress (optional, needs calendar access).
 
   When you're free again it gives you a minute before the break starts.
@@ -129,9 +131,10 @@ example `swift run EyeRest -workSeconds 600 -idleResetSeconds 300` (set
 | `longBreakEvery` | 3 | Every Nth break is a long one (0 turns long breaks off) |
 | `longBreakSeconds` | 300 | Long break length |
 | `playSound` | true | Play a sound when a break ends |
-| `graceSeconds` | 60 | Wait after a call or meeting ends before a held break |
+| `graceSeconds` | 60 | Wait after a hold ends before starting the held break |
 | `holdDuringCalls` | true | Hold breaks while the camera or mic is in use |
 | `holdDuringSlideshows` | true | Hold breaks during Keynote or PowerPoint slideshows |
+| `holdDuringFullScreen` | true | Hold breaks while the app in front fills a display with a video or a game |
 | `holdDuringMeetings` | false | Hold breaks during calendar meetings |
 | `showTimer` | true | Show the countdown in the menu bar |
 | `recordApps` | false | Record which app is in front while you're at the screen |
@@ -146,11 +149,28 @@ To change one permanently: `defaults write io.github.fengzdadi.EyeRest idleReset
   camera off may not count; turn on calendar meetings to cover those. While
   calls hold breaks, a call also keeps you at the screen: listening without
   touching the keyboard or mouse isn't taken for being away.
-- **Slideshow:** a Keynote or PowerPoint window covering a whole display.
+- **Slideshow:** a Keynote or PowerPoint window filling a display (see below).
   Editing a deck in native full screen looks the same, so it counts too.
+- **Full-screen video or game:** the app in front fills a display, and its
+  Info.plist says it's a game (the category macOS goes by for Game Mode) or
+  it's keeping the display awake, as video players and browsers do while a
+  video plays. A game that doesn't say so, such as a Windows game run through
+  CrossOver, counts only while it keeps the display awake. Chrome pages and
+  extensions that only keep the screen on, and OBS while it records, aren't
+  taken for a video. EyeRest can't tell which of an app's windows is playing,
+  so a video in Picture in Picture or in another window counts while the same
+  app fills a display. Videos in web apps installed from Chrome or Edge
+  aren't noticed. Turning off calls doesn't stop a video call in full screen
+  holding breaks as a video. A game played with only a controller counts as
+  away after 2 minutes without keyboard or mouse input, unless it keeps the
+  display awake, as most games do.
 - **Calendar meeting:** a timed event happening now that you haven't declined,
   with other attendees or a Zoom, Meet, Teams, Webex, FaceTime or Tencent
   Meeting link. Events marked "free" don't count.
+
+A window fills a display when it covers all of it, or when it's in native full
+screen below the camera housing or a menu bar set to stay visible. A window
+zoomed to the same size doesn't count.
 
 macOS ties the calendar permission to the app's signature. The app is signed ad
 hoc, so after a rebuild macOS may ask again.
@@ -169,9 +189,10 @@ calls. It reads the Mac's state through an `ActivityProbe`, so the tests in
 |---|---|
 | `EyeRestCore/BreakTimer.swift` | The state machine (working, away, waiting while busy, waiting for a typing pause, on a break, paused) and whether you're at the screen |
 | `BreakScheduler.swift` | Ticks the timer once a second and mirrors it into the break screen, heads-up and menu |
-| `LiveProbe.swift` | The real `ActivityProbe`: idle time, screen lock, and the "Hold Breaks During" checks, the slow ones reused for 5 seconds |
+| `LiveProbe.swift` | The real `ActivityProbe`: idle time, screen lock, and the "Hold Breaks During" checks, the slow ones reused for 5 seconds (the window checks only until you switch apps or Spaces) |
 | `EyeRestCore/CachedCheck.swift` | Keeps a slow check's answer for a few seconds |
-| `Activity.swift` | Idle time (`CGEventSource`), the app in front (`NSWorkspace`), camera use (CoreMediaIO), microphone use per process and the app behind it (Core Audio), display-sleep assertions (IOKit), slideshow windows (`CGWindowList`) |
+| `EyeRestCore/DisplayFill.swift` | Whether an app's windows fill a display, from their bounds |
+| `Activity.swift` | Idle time (`CGEventSource`), the app in front (`NSWorkspace`), camera use (CoreMediaIO), microphone use per process and the app behind it (Core Audio), display-sleep assertions, overall and per process (IOKit), slideshow and full-screen windows (`CGWindowList`), whether the app in front is a game (its Info.plist) |
 | `MeetingCalendar.swift` | Current calendar meeting (EventKit) |
 | `HeadsUp.swift` | The countdown pill before a break; a panel that never becomes key |
 | `BreakOverlay.swift` | Non-activating full-screen panels, so focus goes back to your app after the break |

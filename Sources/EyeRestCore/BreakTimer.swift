@@ -12,7 +12,8 @@ public protocol ActivityProbe {
     /// A call is in progress: the camera or microphone is in use.
     func isInCall() -> Bool
     var isScreenLocked: Bool { get }
-    /// Why a due break should wait (a call, a slideshow, a meeting), or nil.
+    /// Why a due break should wait (a call, a slideshow, a full-screen video or
+    /// game, a meeting), or nil.
     func busyReason() -> String?
 }
 
@@ -76,7 +77,7 @@ public struct BreakTimer {
     /// timer and the screen time log.
     public enum Presence: Equatable, Sendable {
         /// At the screen, last seen this many seconds ago: at the last input,
-        /// or now while a video or a call keeps them there.
+        /// or when a video or a call last kept them there.
         case here(secondsAgo: TimeInterval)
         /// Away this long: no input with nothing keeping them at the screen,
         /// the screen locked, or the Mac asleep.
@@ -114,6 +115,8 @@ public struct BreakTimer {
     private var clock: TimeInterval = 0
     /// When the current break became due, while it waits for a pause in typing.
     private var dueSince: TimeInterval?
+    /// When a video or a call last kept the user at the screen without input.
+    private var keptHereAt: TimeInterval?
 
     public init(config: Config = Config()) {
         self.config = config
@@ -169,9 +172,15 @@ public struct BreakTimer {
                 } else if let reason = probe.busyReason() {
                     state = .waiting(reason: reason)
                 } else if case .waiting = state, config.graceSeconds > 0 {
-                    // The call or meeting just ended; give a moment before the break.
+                    // The hold just ended; give a moment before the break.
                     state = .working
                     remaining = config.graceSeconds
+                } else if state == .working, config.headsUpSeconds > 0, !showsHeadsUp {
+                    // No heads-up yet: a busy check hid it and stopped only now
+                    // (the live probe's answers can be a few seconds old), or
+                    // a slow tick skipped it. Show it rather than start the
+                    // break unannounced.
+                    remaining = config.headsUpSeconds
                 } else if isTyping(probe: probe) {
                     state = .waitingForTyping
                 } else {
@@ -229,16 +238,31 @@ public struct BreakTimer {
     // MARK: Helpers
 
     /// The user is away, taking a natural break, if the screen is locked, the
-    /// Mac just woke from sleep (a gap longer than a break), or there has been
-    /// no input for a while. Without input they still count as here while a
-    /// video or a call keeps them at the screen. Once away, only input brings
-    /// them back, so a long absence costs no slow checks.
-    private func checkPresence(gap: TimeInterval, probe: ActivityProbe) -> Presence {
+    /// Mac just woke from sleep (a gap longer than a break), or they haven't
+    /// been seen for a while. They're seen at each input, and while a video or
+    /// a call keeps them at the screen without input. When that ends they get
+    /// as long as after an input, counted from then, so a break held by a
+    /// video that just ended gets its grace instead of being dropped. Once
+    /// away, only input brings them back, so a long absence costs no slow checks.
+    private mutating func checkPresence(gap: TimeInterval, probe: ActivityProbe) -> Presence {
         let idle = probe.idleSeconds()
-        if probe.isScreenLocked || gap > config.breakSeconds { return .away(seconds: max(gap, idle)) }
-        if idle < max(config.idleResetSeconds, config.breakSeconds) { return .here(secondsAgo: idle) }
-        if case .here = presence, probe.isDisplayHeldAwake() || probe.isInCall() { return .here(secondsAgo: 0) }
-        return .away(seconds: idle)
+        if probe.isScreenLocked || gap > config.breakSeconds { return .away(seconds: max(gap, unseen(idle: idle))) }
+        let limit = max(config.idleResetSeconds, config.breakSeconds)
+        if idle < limit { return .here(secondsAgo: idle) }
+        guard case .here = presence else { return .away(seconds: unseen(idle: idle)) }
+        if probe.isDisplayHeldAwake() || probe.isInCall() {
+            keptHereAt = clock
+            return .here(secondsAgo: 0)
+        }
+        let sinceSeen = unseen(idle: idle)
+        return sinceSeen < limit ? .here(secondsAgo: sinceSeen) : .away(seconds: sinceSeen)
+    }
+
+    /// Seconds since the user was last seen: at the last input, or when a
+    /// video or a call last kept them at the screen.
+    private func unseen(idle: TimeInterval) -> TimeInterval {
+        guard let keptHereAt else { return idle }
+        return min(idle, clock - keptHereAt)
     }
 
     /// A due break waits for a pause in typing, but no longer than

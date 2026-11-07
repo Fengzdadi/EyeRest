@@ -33,6 +33,8 @@
 "microphone in use" = "麦克风使用中";
 "microphone in use by %@" = "%@ 正在使用麦克风";
 "%@ slideshow" = "%@ 正在放映";
+"full-screen video in %@" = "%@ 正在全屏播放视频";
+"playing %@ in full screen" = "正在全屏玩 %@";
 "meeting: %@" = "会议：%@";
 "Untitled" = "无标题";
 
@@ -56,6 +58,7 @@
 "Hold Breaks During" = "以下情况暂缓休息";
 "Calls (Camera or Mic in Use)" = "通话（摄像头或麦克风使用中）";
 "Keynote and PowerPoint Slideshows" = "Keynote 和 PowerPoint 放映";
+"Full-Screen Videos and Games" = "全屏视频和游戏";
 "Calendar Meetings" = "日历会议";
 "Show Timer in Menu Bar" = "在菜单栏显示倒计时";
 "Sound When a Break Ends" = "休息结束时播放提示音";

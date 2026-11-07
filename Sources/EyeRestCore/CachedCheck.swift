@@ -17,4 +17,10 @@ public struct CachedCheck<Value> {
         last = (value, now)
         return value
     }
+
+    /// Forgets the last answer, say because what it depends on just changed,
+    /// so the next one is fresh.
+    public mutating func reset() {
+        last = nil
+    }
 }
